@@ -6,3 +6,14 @@ C:\Users\Jose Ferrão\Desktop\interact-Fabrica\tools\kinectserver\source\bin\Deb
 C:\Users\Jose Ferrão\Desktop\interact-Fabrica\tools\kinectserver\source\bin\Debug\server.pdb
 C:\Users\Jose Ferrão\Desktop\interact-Fabrica\tools\kinectserver\source\obj\x86\Debug\server.exe
 C:\Users\Jose Ferrão\Desktop\interact-Fabrica\tools\kinectserver\source\obj\x86\Debug\server.pdb
+C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\KinectServer.csproj.AssemblyReference.cache
+C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\KinectServer.csproj.CoreCompileInputs.cache
+C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\server.exe
+C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\server.pdb
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\server.exe.config
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\server.exe
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\server.pdb
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Fleck.dll
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Microsoft.Kinect.dll
+C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Microsoft.Kinect.xml
+C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\KinectSe.8307E18F.Up2Date

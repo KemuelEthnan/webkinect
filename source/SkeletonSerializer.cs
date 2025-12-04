@@ -45,7 +45,7 @@ namespace KinectServer
         }
 
         // Serializes an array of Kinect skeletons into an array of JSON skeletons.The Kinect skeletons.The coordinate mapper.Mode (color or depth)
-        public static string Serialize(this List<Skeleton> skeletons, CoordinateMapper mapper, Mode mode)
+        public static string Serialize(List<Skeleton> skeletons, CoordinateMapper mapper, Mode mode)
         {
             JSONSkeletonCollection jsonSkeletons = new JSONSkeletonCollection { Skeletons = new List<JSONSkeleton>() };
 

@@ -1,0 +1,1961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinect 3D Scanner - Export STL</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            font-size: 1.1em;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        .viewer-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.scanning {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            animation: pulse-button 1s infinite;
+        }
+
+        @keyframes pulse-button {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        button.success {
+            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+        }
+
+        #viewer {
+            width: 100%;
+            height: 600px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .panel h2 {
+            margin-bottom: 15px;
+            color: #667eea;
+            font-size: 1.3em;
+        }
+
+        .info-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #666;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .info-item span {
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .scan-progress {
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .export-section {
+            margin-top: 20px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .info p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📷 Kinect 3D Scanner</h1>
+            <div class="status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Menghubungkan ke server...</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="viewer-section">
+                <div class="info">
+                    <p><strong>Instruksi (Seperti Skannect):</strong></p>
+                    <p>1. Pastikan server Kinect sudah berjalan di <code>ws://127.0.0.1:8181</code></p>
+                    <p>2. Letakkan objek di depan Kinect (jarak 0.85-4 meter)</p>
+                    <p>3. Klik "Mulai Scan" untuk mulai mendeteksi dan mengumpulkan point cloud objek</p>
+                    <p>4. Gerakkan objek atau pindahkan Kinect perlahan untuk mendapatkan berbagai sudut</p>
+                    <p>5. Sistem akan otomatis memfilter background dan hanya mengambil objek</p>
+                    <p>6. Klik "Stop Scan" untuk menghentikan pengumpulan data</p>
+                    <p>7. Klik "Generate Mesh" untuk membuat 3D model dari point cloud</p>
+                    <p>8. Klik "Export STL" untuk menyimpan file .stl yang bisa dibuka di software 3D</p>
+                    <p><strong>Tips:</strong> Atur Min/Max Distance untuk fokus pada objek tertentu</p>
+                </div>
+
+                <div class="controls">
+                    <button id="connectBtn" onclick="connect()">Hubungkan</button>
+                    <button id="disconnectBtn" onclick="disconnect()" disabled style="display:none;">Putuskan</button>
+                    <button id="testBtn" onclick="testThreeJS()" title="Test Three.js rendering">🧪 Test Render</button>
+                    <button id="startScanBtn" onclick="startScan()" disabled>Mulai Scan</button>
+                    <button id="stopScanBtn" onclick="stopScan()" disabled>Stop Scan</button>
+                    <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
+                    <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
+                    <button id="clearBtn" onclick="clearScan()" disabled>Clear</button>
+                </div>
+
+                <div id="viewer"></div>
+            </div>
+
+            <div class="sidebar">
+                <div class="panel">
+                    <h2>📊 Scan Info</h2>
+                    <div class="info-item">
+                        <label>Status:</label>
+                        <span id="scanStatus">Tidak aktif</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Point Count:</label>
+                        <span id="pointCount">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Frames Captured:</label>
+                        <span id="frameCount">0</span>
+                    </div>
+                    <div class="scan-progress">
+                        <label>Progress:</label>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>⚙️ Settings</h2>
+                    <div class="info-item">
+                        <label>Max Points per Frame:</label>
+                        <input type="range" id="maxPointsSlider" min="1000" max="50000" value="10000" step="1000">
+                        <span id="maxPointsValue">10000</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Min Distance (m):</label>
+                        <input type="range" id="minDistanceSlider" min="0.5" max="2.0" value="0.85" step="0.05">
+                        <span id="minDistanceValue">0.85</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Max Distance (m):</label>
+                        <input type="range" id="maxDistanceSlider" min="1.0" max="4.0" value="2.5" step="0.1">
+                        <span id="maxDistanceValue">2.5</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Outlier Removal:</label>
+                        <input type="range" id="outlierSlider" min="0" max="50" value="10" step="1">
+                        <span id="outlierValue">10</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Mesh Resolution:</label>
+                        <input type="range" id="meshResolutionSlider" min="0.01" max="0.1" value="0.05" step="0.01">
+                        <span id="meshResolutionValue">0.05</span>
+                    </div>
+                    <div class="info-item" style="margin-top: 15px; padding: 15px; background: #fff3cd; border-radius: 5px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="showAllPoints" onchange="toggleShowAll()">
+                            <span><strong>Show All Points</strong> (disable filtering untuk debugging)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="panel export-section">
+                    <h2>💾 Export</h2>
+                    <p>Setelah generate mesh, klik "Export STL" untuk menyimpan file.</p>
+                </div>
+
+                <div class="panel">
+                    <h2>🔍 Debug Info</h2>
+                    <div class="info-item">
+                        <label>Last Message:</label>
+                        <span id="debugMessage" style="font-size: 0.9em; color: #666; word-break: break-word;">Menunggu data...</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Data Received:</label>
+                        <span id="debugDataCount">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Connection Status:</label>
+                        <span id="debugConnection">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        var socket = null;
+        var connected = false;
+        var isScanning = false;
+        var pointCloud = [];
+        var filteredPointCloud = [];
+        var mesh = null;
+        var scene, camera, renderer, controls;
+        
+        // Filtering parameters
+        var minDistance = 0.85; // meters
+        var maxDistance = 2.5;  // meters
+        var outlierThreshold = 10; // neighbors
+
+        // Three.js setup
+        function initViewer() {
+            const container = document.getElementById('viewer');
+            if (!container) {
+                console.error('Viewer container not found');
+                return;
+            }
+            
+            try {
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x1a1a1a);
+                
+                const width = container.clientWidth || 800;
+                const height = container.clientHeight || 600;
+                
+                camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+                camera.position.set(0, 0, 3);
+                
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(width, height);
+                container.appendChild(renderer.domElement);
+                
+                console.log('Three.js initialized successfully');
+            } catch (error) {
+                console.error('Error initializing Three.js:', error);
+                throw error;
+            }
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            // Add grid
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+            
+            // Add axes
+            const axesHelper = new THREE.AxesHelper(1);
+            scene.add(axesHelper);
+            
+            // Simple orbit controls (manual implementation)
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMousePosition.x;
+                    const deltaY = e.clientY - previousMousePosition.y;
+                    
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
+                    camera.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), deltaY * 0.01);
+                    camera.lookAt(0, 0, 0);
+                }
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                const delta = e.deltaY * 0.001;
+                camera.position.multiplyScalar(1 + delta);
+            });
+            
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+        
+        // Test function to verify Three.js is working
+        function testThreeJS() {
+            if (!scene || !camera || !renderer) {
+                console.error('❌ Three.js not initialized');
+                return false;
+            }
+            
+            try {
+                // Add a test sphere
+                const testGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+                const testMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const testSphere = new THREE.Mesh(testGeometry, testMaterial);
+                testSphere.position.set(0, 0, 0);
+                testSphere.name = 'testSphere';
+                scene.add(testSphere);
+                
+                // Render
+                renderer.render(scene, camera);
+                
+                console.log('✅ Three.js test: Red sphere should be visible');
+                updateDebugInfo('Three.js test: Red sphere added');
+                
+                // Remove after 2 seconds
+                setTimeout(() => {
+                    scene.remove(testSphere);
+                    testGeometry.dispose();
+                    testMaterial.dispose();
+                    console.log('Test sphere removed');
+                }, 2000);
+                
+                return true;
+            } catch (error) {
+                console.error('❌ Three.js test failed:', error);
+                return false;
+            }
+        }
+        
+        function disconnect() {
+            if (socket) {
+                console.log('Disconnecting...');
+                socket.close();
+                socket = null;
+            }
+            updateStatus(false);
+        }
+        
+        function updateStatus(isConnected) {
+            connected = isConnected;
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const startScanBtn = document.getElementById('startScanBtn');
+            
+            if (isConnected) {
+                indicator.classList.add('connected');
+                statusText.textContent = 'Terhubung ke server';
+                if (connectBtn) connectBtn.disabled = true;
+                if (disconnectBtn) {
+                    disconnectBtn.disabled = false;
+                    disconnectBtn.style.display = 'inline-block';
+                }
+                if (startScanBtn) startScanBtn.disabled = false;
+            } else {
+                indicator.classList.remove('connected');
+                statusText.textContent = 'Tidak terhubung';
+                if (connectBtn) connectBtn.disabled = false;
+                if (disconnectBtn) {
+                    disconnectBtn.disabled = true;
+                    disconnectBtn.style.display = 'none';
+                }
+                if (startScanBtn) startScanBtn.disabled = true;
+                // Also disable other buttons
+                const stopScanBtn = document.getElementById('stopScanBtn');
+                const generateMeshBtn = document.getElementById('generateMeshBtn');
+                const exportSTLBtn = document.getElementById('exportSTLBtn');
+                if (stopScanBtn) stopScanBtn.disabled = true;
+                if (generateMeshBtn) generateMeshBtn.disabled = true;
+                if (exportSTLBtn) exportSTLBtn.disabled = true;
+            }
+        }
+        
+        function connect() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log('Already connected');
+                return;
+            }
+            
+            console.log('🔗 Connecting to ws://127.0.0.1:8181...');
+            updateDebugInfo('Connecting to server...');
+            updateDebugConnection('Connecting...');
+            socket = new WebSocket("ws://127.0.0.1:8181");
+            
+            socket.onopen = function() {
+                console.log('✅ WebSocket connected successfully');
+                updateStatus(true);
+                updateDebugConnection('Connected');
+                updateDebugInfo('Connected to server');
+                // Request PointCloud mode
+                try {
+                    socket.send("PointCloud");
+                    console.log('📤 Sent PointCloud mode request');
+                    updateDebugInfo('Requested PointCloud mode');
+                } catch (e) {
+                    console.error('❌ Error sending PointCloud command:', e);
+                    updateDebugInfo('Error: ' + e.message);
+                }
+            };
+            
+            socket.onclose = function(event) {
+                console.log('🔌 WebSocket closed', event.code, event.reason);
+                updateStatus(false);
+                updateDebugConnection('Disconnected');
+                updateDebugInfo('Disconnected from server (Code: ' + event.code + ')');
+                // Remove preview on disconnect
+                if (scene) {
+                    const oldPreview = scene.getObjectByName('preview');
+                    if (oldPreview) {
+                        scene.remove(oldPreview);
+                    }
+                }
+            };
+            
+            socket.onerror = function(error) {
+                console.error('❌ WebSocket error:', error);
+                updateStatus(false);
+                updateDebugConnection('Error');
+                updateDebugInfo('Connection error - Pastikan server berjalan di ws://127.0.0.1:8181');
+                // Don't show alert immediately, let onclose handle it
+            };
+            
+            socket.onmessage = function(event) {
+                if (typeof event.data === "string") {
+                    try {
+                        const data = JSON.parse(event.data);
+                            // Check if it's point cloud data
+                        if (data.points && Array.isArray(data.points)) {
+                            console.log('✅ Point cloud data received:', {
+                                pointCount: data.points.length,
+                                width: data.width,
+                                height: data.height,
+                                isScanning: isScanning,
+                                firstPoint: data.points[0] ? {
+                                    x: data.points[0].x,
+                                    y: data.points[0].y,
+                                    z: data.points[0].z,
+                                    r: data.points[0].r,
+                                    g: data.points[0].g,
+                                    b: data.points[0].b
+                                } : 'none',
+                                samplePoints: data.points.slice(0, 5).map(p => ({ x: p.x, y: p.y, z: p.z }))
+                            });
+                            
+                            // Update debug info
+                            updateDebugInfo(`📦 Received ${data.points.length} points`);
+                            
+                            if (isScanning) {
+                                console.log('📸 Processing point cloud (scanning mode)');
+                                processPointCloud(data);
+                            } else {
+                                // Show preview even when not scanning
+                                console.log('👁️ Showing preview (not scanning mode)');
+                                showPreview(data);
+                            }
+                        } else {
+                            console.log('⚠️ Non-point cloud JSON data received:', Object.keys(data));
+                            console.log('Data sample:', JSON.stringify(data).substring(0, 200));
+                            updateDebugInfo('Received non-point cloud data: ' + Object.keys(data).join(', '));
+                        }
+                    } catch (e) {
+                        console.error('❌ Error parsing point cloud data:', e);
+                        console.error('Raw data preview:', event.data.substring(0, 200));
+                        updateDebugInfo('Error parsing: ' + e.message);
+                    }
+                } else {
+                    console.log('📦 Received non-string data:', typeof event.data, event.data instanceof Blob ? 'Blob' : '');
+                    updateDebugInfo('Received ' + typeof event.data + ' data');
+                }
+            };
+        }
+        
+        // Show preview of point cloud (not saving)
+        function showPreview(data) {
+            if (!scene) {
+                console.warn('Scene not initialized, cannot show preview');
+                return;
+            }
+            
+            if (!data || !data.points || data.points.length === 0) {
+                console.warn('No points in preview data');
+                updateDebugInfo('⚠️ No points in data');
+                return;
+            }
+            
+            console.log('📊 Preview data analysis:', {
+                totalPoints: data.points.length,
+                sampleZ: data.points.slice(0, 10).map(p => p.z).filter(z => z !== undefined),
+                zRange: {
+                    min: Math.min(...data.points.map(p => Math.abs(p.z || 0)).filter(z => z > 0)),
+                    max: Math.max(...data.points.map(p => Math.abs(p.z || 0)))
+                }
+            });
+            
+            const maxPointsEl = document.getElementById('maxPointsSlider');
+            const maxPoints = maxPointsEl ? parseInt(maxPointsEl.value) || 10000 : 10000;
+            
+            let previewPoints = data.points.slice(0, Math.min(data.points.length, maxPoints));
+            console.log('Preview: Original points:', previewPoints.length);
+            
+            // Apply basic filtering for preview
+            const beforeFilter = previewPoints.length;
+            previewPoints = filterByDistance(previewPoints);
+            console.log('Preview: After distance filter:', previewPoints.length, 'of', beforeFilter);
+            
+            // If all points filtered out, show without distance filter
+            if (previewPoints.length === 0 && data.points.length > 0) {
+                console.warn('⚠️ All points filtered out! Showing first 1000 points without filter');
+                previewPoints = data.points.slice(0, Math.min(1000, data.points.length));
+                updateDebugInfo(`⚠️ All filtered! Showing ${previewPoints.length} raw points`);
+            }
+            
+            // Create temporary preview
+            if (previewPoints.length > 0) {
+                console.log('✅ Displaying preview with', previewPoints.length, 'points');
+                displayPreviewPoints(previewPoints);
+                updateDebugInfo(`✅ Preview: ${previewPoints.length} points (${beforeFilter} total)`);
+            } else {
+                console.error('❌ No points to display in preview');
+                updateDebugInfo('❌ No points after filtering - Check Min/Max Distance!');
+            }
+        }
+        
+        // Toggle show all points
+        function toggleShowAll() {
+            const showAll = document.getElementById('showAllPoints').checked;
+            console.log('Show All Points:', showAll ? 'ENABLED' : 'DISABLED');
+            
+            // Re-process current data if available
+            if (pointCloud.length > 0) {
+                filteredPointCloud = filterPointCloud(pointCloud);
+                updatePointCloudDisplay();
+                updateStats();
+            }
+            
+            // Also refresh preview if we have recent data
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                updateDebugInfo(showAll ? 'Show All: ON - No distance filtering' : 'Show All: OFF - Using distance filter');
+            }
+        }
+        
+        // Display preview points (temporary, not saved)
+        function displayPreviewPoints(points) {
+            if (!scene || !renderer) {
+                console.error('❌ Scene or renderer not initialized');
+                updateDebugInfo('Error: Scene not ready');
+                return;
+            }
+            
+            if (!points || points.length === 0) {
+                console.warn('⚠️ No points to display');
+                return;
+            }
+            
+            console.log('🎨 Displaying', points.length, 'points...');
+            
+            // Remove old preview
+            const oldPreview = scene.getObjectByName('preview');
+            if (oldPreview) {
+                scene.remove(oldPreview);
+                if (oldPreview.geometry) oldPreview.geometry.dispose();
+                if (oldPreview.material) oldPreview.material.dispose();
+            }
+            
+            try {
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(points.length * 3);
+                const colors = new Float32Array(points.length * 3);
+                
+                // Calculate bounds for camera positioning
+                let minX = Infinity, maxX = -Infinity;
+                let minY = Infinity, maxY = -Infinity;
+                let minZ = Infinity, maxZ = -Infinity;
+                let validPoints = 0;
+                
+                for (let i = 0; i < points.length; i++) {
+                    const point = points[i];
+                    if (!point) continue;
+                    
+                    const x = parseFloat(point.x) || 0;
+                    const y = parseFloat(point.y) || 0;
+                    const z = parseFloat(point.z) || 0;
+                    
+                    // Skip invalid points
+                    if (isNaN(x) || isNaN(y) || isNaN(z) || !isFinite(x) || !isFinite(y) || !isFinite(z)) {
+                        continue;
+                    }
+                    
+                    positions[validPoints * 3] = x;
+                    positions[validPoints * 3 + 1] = y;
+                    positions[validPoints * 3 + 2] = z;
+                    
+                    colors[validPoints * 3] = (point.r || 128) / 255;
+                    colors[validPoints * 3 + 1] = (point.g || 128) / 255;
+                    colors[validPoints * 3 + 2] = (point.b || 128) / 255;
+                    
+                    minX = Math.min(minX, x);
+                    maxX = Math.max(maxX, x);
+                    minY = Math.min(minY, y);
+                    maxY = Math.max(maxY, y);
+                    minZ = Math.min(minZ, z);
+                    maxZ = Math.max(maxZ, z);
+                    validPoints++;
+                }
+                
+                if (validPoints === 0) {
+                    console.error('❌ No valid points after processing');
+                    updateDebugInfo('No valid points found');
+                    return;
+                }
+                
+                // Create properly sized arrays
+                let finalPositions, finalColors;
+                if (validPoints < points.length) {
+                    finalPositions = new Float32Array(validPoints * 3);
+                    finalColors = new Float32Array(validPoints * 3);
+                    for (let i = 0; i < validPoints; i++) {
+                        finalPositions[i * 3] = positions[i * 3];
+                        finalPositions[i * 3 + 1] = positions[i * 3 + 1];
+                        finalPositions[i * 3 + 2] = positions[i * 3 + 2];
+                        finalColors[i * 3] = colors[i * 3];
+                        finalColors[i * 3 + 1] = colors[i * 3 + 1];
+                        finalColors[i * 3 + 2] = colors[i * 3 + 2];
+                    }
+                } else {
+                    finalPositions = positions;
+                    finalColors = colors;
+                }
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(finalPositions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(finalColors, 3));
+                
+                // Make points more visible
+                const material = new THREE.PointsMaterial({
+                    size: 0.08, // Even larger for better visibility
+                    vertexColors: true,
+                    sizeAttenuation: true, // Enable size attenuation for depth
+                    opacity: 1.0,
+                    transparent: false
+                });
+                
+                const preview = new THREE.Points(geometry, material);
+                preview.name = 'preview';
+                scene.add(preview);
+                
+                console.log('✅ Added preview to scene:', {
+                    points: validPoints,
+                    bounds: { x: [minX, maxX], y: [minY, maxY], z: [minZ, maxZ] }
+                });
+                
+                // Auto-adjust camera to view the points
+                if (validPoints > 0 && !isNaN(minX) && !isNaN(maxX)) {
+                    const centerX = (minX + maxX) / 2;
+                    const centerY = (minY + maxY) / 2;
+                    const centerZ = (minZ + maxZ) / 2;
+                    const sizeX = maxX - minX || 1;
+                    const sizeY = maxY - minY || 1;
+                    const sizeZ = maxZ - minZ || 1;
+                    const size = Math.max(sizeX, sizeY, sizeZ) || 1;
+                    
+                    if (size > 0 && camera) {
+                        // Position camera behind and above the point cloud
+                        // Kinect coordinate system: X=left-right, Y=up-down, Z=distance
+                        const distance = size * 2.5;
+                        camera.position.set(
+                            centerX, 
+                            centerY + size * 0.3,  // Slightly above
+                            centerZ + distance    // Behind the points
+                        );
+                        camera.lookAt(centerX, centerY, centerZ);
+                        camera.updateProjectionMatrix();
+                        
+                        console.log('📷 Camera adjusted:', {
+                            position: { x: camera.position.x.toFixed(2), y: camera.position.y.toFixed(2), z: camera.position.z.toFixed(2) },
+                            lookAt: { x: centerX.toFixed(2), y: centerY.toFixed(2), z: centerZ.toFixed(2) },
+                            bounds: { 
+                                x: [minX.toFixed(2), maxX.toFixed(2)],
+                                y: [minY.toFixed(2), maxY.toFixed(2)],
+                                z: [minZ.toFixed(2), maxZ.toFixed(2)]
+                            },
+                            size: size.toFixed(2)
+                        });
+                    }
+                } else {
+                    console.warn('⚠️ Cannot adjust camera - invalid bounds');
+                }
+                
+                // Force render
+                if (renderer && scene && camera) {
+                    renderer.render(scene, camera);
+                    console.log('🖼️ Scene rendered');
+                }
+                
+                updateDebugInfo(`✅ Displayed ${validPoints} points`);
+                console.log('✅ Preview displayed successfully');
+            } catch (error) {
+                console.error('❌ Error displaying preview:', error);
+                console.error('Error stack:', error.stack);
+                updateDebugInfo('Error: ' + error.message);
+            }
+        }
+        
+        // Update debug info in UI
+        var debugDataCount = 0;
+        
+        function updateDebugInfo(message) {
+            const debugMsgEl = document.getElementById('debugMessage');
+            if (debugMsgEl) {
+                debugMsgEl.textContent = message;
+                debugMsgEl.style.color = '#333';
+            }
+            
+            // Update data count
+            debugDataCount++;
+            const debugCountEl = document.getElementById('debugDataCount');
+            if (debugCountEl) {
+                debugCountEl.textContent = debugDataCount;
+            }
+        }
+        
+        function updateDebugConnection(status) {
+            const debugConnEl = document.getElementById('debugConnection');
+            if (debugConnEl) {
+                debugConnEl.textContent = status;
+                debugConnEl.style.color = status === 'Connected' ? '#44ff44' : '#ff4444';
+            }
+        }
+        
+        function processPointCloud(data) {
+            if (!data || !data.points || !Array.isArray(data.points)) {
+                console.warn('Invalid point cloud data:', data);
+                return;
+            }
+            
+            // Add points to collection
+            const maxPoints = parseInt(document.getElementById('maxPointsSlider').value) || 10000;
+            let newPoints = data.points.slice(0, Math.min(data.points.length, maxPoints));
+            
+            if (newPoints.length === 0) {
+                console.warn('No points after slicing');
+                return;
+            }
+            
+            // Apply distance filtering to detect objects
+            newPoints = filterByDistance(newPoints);
+            
+            if (newPoints.length === 0) {
+                console.warn('No points after distance filtering. Adjust Min/Max Distance settings.');
+                return;
+            }
+            
+            // Apply outlier removal only if we have existing points
+            if (pointCloud.length > 0) {
+                const beforeOutlier = newPoints.length;
+                newPoints = removeOutliers(newPoints, pointCloud);
+                if (newPoints.length === 0 && beforeOutlier > 0) {
+                    console.warn('All points removed by outlier filter. Try reducing Outlier Removal threshold.');
+                    // Keep some points anyway
+                    newPoints = data.points.slice(0, Math.min(100, data.points.length));
+                    newPoints = filterByDistance(newPoints);
+                }
+            }
+            
+            if (newPoints.length > 0) {
+                pointCloud.push(...newPoints);
+                
+                // Update filtered point cloud for display
+                filteredPointCloud = filterPointCloud(pointCloud);
+                
+                updatePointCloudDisplay();
+                updateStats();
+                
+                console.log('Processed', newPoints.length, 'new points. Total:', pointCloud.length, 'Filtered:', filteredPointCloud.length);
+            } else {
+                console.warn('No points to add after filtering');
+            }
+        }
+        
+        // Filter points by distance (object detection)
+        // NOTE: Kinect coordinates - Z is distance from sensor (in meters)
+        function filterByDistance(points) {
+            if (!points || points.length === 0) return [];
+            
+            const minDistEl = document.getElementById('minDistanceSlider');
+            const maxDistEl = document.getElementById('maxDistanceSlider');
+            const showAllEl = document.getElementById('showAllPoints');
+            const showAll = showAllEl ? showAllEl.checked : false;
+            
+            // If "Show All" is checked, don't filter by distance
+            if (showAll) {
+                console.log('Show All Points enabled - no distance filtering');
+                return points.filter(point => {
+                    if (!point || typeof point.x !== 'number') return false;
+                    const z = Math.abs(point.z || 0);
+                    // Only filter out obviously invalid points (too close or too far)
+                    return z >= 0.1 && z <= 5.0;
+                });
+            }
+            
+            if (!minDistEl || !maxDistEl) {
+                // Default values - Z is distance in meters for Kinect
+                return points.filter(point => {
+                    if (!point || typeof point.x !== 'number') return false;
+                    const z = Math.abs(point.z || 0); // Z is distance from sensor
+                    return z >= 0.5 && z <= 4.0;
+                });
+            }
+            
+            const minDist = parseFloat(minDistEl.value) || 0.85;
+            const maxDist = parseFloat(maxDistEl.value) || 2.5;
+            
+            const filtered = points.filter(point => {
+                if (!point || typeof point.x !== 'number' || isNaN(point.x)) return false;
+                // For Kinect: Z coordinate is the distance from sensor (in meters)
+                const z = Math.abs(point.z || 0);
+                return z >= minDist && z <= maxDist;
+            });
+            
+            console.log(`Distance filter: ${points.length} -> ${filtered.length} (Z range: ${minDist}-${maxDist}m)`);
+            
+            // If all filtered out and we're in preview mode, use wider range
+            if (filtered.length === 0 && !isScanning && points.length > 0) {
+                console.warn('⚠️ All points filtered out! Using wider range for preview');
+                const widerFiltered = points.filter(point => {
+                    if (!point || typeof point.x !== 'number') return false;
+                    const z = Math.abs(point.z || 0);
+                    return z >= 0.3 && z <= 5.0;
+                });
+                console.log(`Wider filter result: ${widerFiltered.length} points`);
+                return widerFiltered;
+            }
+            
+            return filtered;
+        }
+        
+        // Remove statistical outliers
+        function removeOutliers(newPoints, existingPoints) {
+            if (!newPoints || newPoints.length === 0) return [];
+            if (!existingPoints || existingPoints.length === 0) return newPoints;
+            
+            const outlierEl = document.getElementById('outlierSlider');
+            if (!outlierEl) return newPoints;
+            
+            const threshold = parseInt(outlierEl.value) || 0;
+            if (threshold === 0) return newPoints;
+            
+            const filtered = [];
+            const searchRadius = 0.05; // 5cm search radius
+            const maxCheck = Math.min(existingPoints.length, 500); // Limit for performance
+            
+            for (let i = 0; i < newPoints.length; i++) {
+                const point = newPoints[i];
+                if (!point || typeof point.x !== 'number') continue;
+                
+                let neighborCount = 0;
+                
+                // Count neighbors in existing point cloud (limited for performance)
+                for (let j = 0; j < maxCheck; j++) {
+                    const existing = existingPoints[j];
+                    if (!existing || typeof existing.x !== 'number') continue;
+                    
+                    const dist = Math.sqrt(
+                        Math.pow((point.x || 0) - (existing.x || 0), 2) +
+                        Math.pow((point.y || 0) - (existing.y || 0), 2) +
+                        Math.pow((point.z || 0) - (existing.z || 0), 2)
+                    );
+                    if (dist < searchRadius) {
+                        neighborCount++;
+                        if (neighborCount >= threshold) break; // Early exit
+                    }
+                }
+                
+                // Count neighbors in new points (limited)
+                if (neighborCount < threshold) {
+                    const maxNewCheck = Math.min(newPoints.length, 100);
+                    for (let j = 0; j < maxNewCheck; j++) {
+                        if (i === j) continue;
+                        const other = newPoints[j];
+                        if (!other || typeof other.x !== 'number') continue;
+                        
+                        const dist = Math.sqrt(
+                            Math.pow((point.x || 0) - (other.x || 0), 2) +
+                            Math.pow((point.y || 0) - (other.y || 0), 2) +
+                            Math.pow((point.z || 0) - (other.z || 0), 2)
+                        );
+                        if (dist < searchRadius) {
+                            neighborCount++;
+                            if (neighborCount >= threshold) break;
+                        }
+                    }
+                }
+                
+                // Keep point if it has enough neighbors
+                if (neighborCount >= threshold) {
+                    filtered.push(point);
+                }
+            }
+            
+            return filtered.length > 0 ? filtered : newPoints.slice(0, Math.min(100, newPoints.length)); // Keep at least some points
+        }
+        
+        // Apply all filters to point cloud
+        function filterPointCloud(points) {
+            if (!points || points.length === 0) return [];
+            
+            // Distance filter
+            let filtered = filterByDistance(points);
+            
+            if (filtered.length === 0) {
+                console.warn('All points filtered out by distance filter');
+                return [];
+            }
+            
+            // Statistical outlier removal (only if we have enough points and threshold > 0)
+            const outlierEl = document.getElementById('outlierSlider');
+            if (outlierEl) {
+                const threshold = parseInt(outlierEl.value) || 0;
+                if (threshold > 0 && filtered.length > 100) {
+                    const beforeOutlier = filtered.length;
+                    filtered = statisticalOutlierRemoval(filtered, threshold);
+                    if (filtered.length === 0 && beforeOutlier > 0) {
+                        console.warn('All points removed by outlier filter, keeping original');
+                        filtered = filterByDistance(points); // Fallback to just distance filter
+                    }
+                }
+            }
+            
+            return filtered;
+        }
+        
+        // Statistical outlier removal using k-nearest neighbors
+        function statisticalOutlierRemoval(points, k) {
+            if (points.length < k) return points;
+            
+            const filtered = [];
+            const distances = [];
+            
+            // Calculate mean distance to k nearest neighbors for each point
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                const neighborDistances = [];
+                
+                for (let j = 0; j < points.length; j++) {
+                    if (i === j) continue;
+                    const other = points[j];
+                    const dist = Math.sqrt(
+                        Math.pow(point.x - other.x, 2) +
+                        Math.pow(point.y - other.y, 2) +
+                        Math.pow(point.z - other.z, 2)
+                    );
+                    neighborDistances.push(dist);
+                }
+                
+                neighborDistances.sort((a, b) => a - b);
+                const meanDist = neighborDistances.slice(0, k).reduce((a, b) => a + b, 0) / k;
+                distances.push(meanDist);
+            }
+            
+            // Calculate mean and standard deviation
+            const mean = distances.reduce((a, b) => a + b, 0) / distances.length;
+            const variance = distances.reduce((sum, d) => sum + Math.pow(d - mean, 2), 0) / distances.length;
+            const stdDev = Math.sqrt(variance);
+            
+            // Keep points within 2 standard deviations
+            const threshold = mean + 2 * stdDev;
+            for (let i = 0; i < points.length; i++) {
+                if (distances[i] <= threshold) {
+                    filtered.push(points[i]);
+                }
+            }
+            
+            return filtered.length > 0 ? filtered : points;
+        }
+        
+        function updatePointCloudDisplay() {
+            if (!scene) {
+                console.warn('Scene not initialized');
+                return;
+            }
+            
+            // Remove old point cloud
+            const oldPointCloud = scene.getObjectByName('pointCloud');
+            if (oldPointCloud) {
+                scene.remove(oldPointCloud);
+            }
+            
+            // Remove preview if scanning
+            if (isScanning) {
+                const oldPreview = scene.getObjectByName('preview');
+                if (oldPreview) {
+                    scene.remove(oldPreview);
+                }
+            }
+            
+            // Use filtered point cloud for display
+            const displayPoints = filteredPointCloud.length > 0 ? filteredPointCloud : pointCloud;
+            
+            if (displayPoints.length === 0) {
+                console.log('No points to display');
+                return;
+            }
+            
+            // Create geometry from points
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(displayPoints.length * 3);
+            const colors = new Float32Array(displayPoints.length * 3);
+            
+            // Calculate bounds for camera positioning
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            
+            for (let i = 0; i < displayPoints.length; i++) {
+                const point = displayPoints[i];
+                const x = point.x || 0;
+                const y = point.y || 0;
+                const z = point.z || 0;
+                
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+                
+                colors[i * 3] = (point.r || 128) / 255;
+                colors[i * 3 + 1] = (point.g || 128) / 255;
+                colors[i * 3 + 2] = (point.b || 128) / 255;
+                
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                minZ = Math.min(minZ, z);
+                maxZ = Math.max(maxZ, z);
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 0.02,
+                vertexColors: true,
+                sizeAttenuation: false
+            });
+            
+            const points = new THREE.Points(geometry, material);
+            points.name = 'pointCloud';
+            scene.add(points);
+            
+            // Auto-adjust camera to view the point cloud
+            if (!isNaN(minX) && !isNaN(maxX) && (maxX - minX) > 0) {
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                const centerZ = (minZ + maxZ) / 2;
+                const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+                
+                if (size > 0) {
+                    camera.position.set(centerX, centerY, centerZ + size * 1.5);
+                    camera.lookAt(centerX, centerY, centerZ);
+                }
+            }
+        }
+        
+        function startScan() {
+            if (!connected) {
+                alert('Harus terhubung ke server terlebih dahulu!');
+                return;
+            }
+            
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert('Koneksi tidak aktif. Silakan hubungkan terlebih dahulu.');
+                return;
+            }
+            
+            console.log('Starting scan...');
+            isScanning = true;
+            pointCloud = [];
+            filteredPointCloud = [];
+            
+            // Remove preview
+            if (scene) {
+                const oldPreview = scene.getObjectByName('preview');
+                if (oldPreview) {
+                    scene.remove(oldPreview);
+                }
+            }
+            
+            document.getElementById('startScanBtn').disabled = true;
+            document.getElementById('startScanBtn').classList.add('scanning');
+            document.getElementById('stopScanBtn').disabled = false;
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('exportSTLBtn').disabled = true;
+            document.getElementById('scanStatus').textContent = 'Scanning...';
+            
+            // Ensure PointCloud mode is active
+            try {
+                socket.send("PointCloud");
+                console.log('Sent PointCloud mode command');
+            } catch (e) {
+                console.error('Error sending PointCloud command:', e);
+                alert('Error mengirim command ke server: ' + e.message);
+            }
+            
+            updateStats();
+        }
+        
+        function stopScan() {
+            console.log('Stopping scan...');
+            isScanning = false;
+            
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('startScanBtn').classList.remove('scanning');
+            document.getElementById('stopScanBtn').disabled = true;
+            
+            // Remove preview
+            if (scene) {
+                const oldPreview = scene.getObjectByName('preview');
+                if (oldPreview) {
+                    scene.remove(oldPreview);
+                }
+            }
+            
+            const totalPoints = pointCloud.length;
+            const filteredPoints = filteredPointCloud.length > 0 ? filteredPointCloud.length : totalPoints;
+            
+            if (filteredPoints > 0) {
+                document.getElementById('scanStatus').textContent = `Selesai (${filteredPoints.toLocaleString()} points)`;
+                document.getElementById('generateMeshBtn').disabled = false;
+            } else {
+                document.getElementById('scanStatus').textContent = 'Selesai (tidak ada data)';
+                document.getElementById('generateMeshBtn').disabled = true;
+            }
+            
+            console.log('Scan stopped. Total points:', totalPoints, 'Filtered:', filteredPoints);
+        }
+        
+        function generateMesh() {
+            const pointsToUse = filteredPointCloud.length > 0 ? filteredPointCloud : pointCloud;
+            
+            if (pointsToUse.length === 0) {
+                alert('Tidak ada point cloud untuk di-generate mesh!');
+                return;
+            }
+            
+            if (pointsToUse.length < 3) {
+                alert('Tidak cukup points untuk membuat mesh! Minimal 3 points diperlukan.');
+                return;
+            }
+            
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('generateMeshBtn').textContent = 'Generating...';
+            
+            // Use setTimeout to allow UI to update
+            setTimeout(() => {
+                try {
+                    mesh = createMeshFromPointCloud(pointsToUse);
+                    
+                    if (!mesh) {
+                        alert('Gagal membuat mesh. Coba ubah parameter Mesh Resolution atau tambah lebih banyak points.');
+                        document.getElementById('generateMeshBtn').disabled = false;
+                        document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                        return;
+                    }
+                    
+                    // Remove old mesh
+                    const oldMesh = scene.getObjectByName('mesh');
+                    if (oldMesh) {
+                        scene.remove(oldMesh);
+                    }
+                    
+                    mesh.name = 'mesh';
+                    scene.add(mesh);
+                    
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                    document.getElementById('exportSTLBtn').disabled = false;
+                    
+                    console.log('Mesh generated successfully with', pointsToUse.length, 'points');
+                } catch (error) {
+                    console.error('Error generating mesh:', error);
+                    alert('Error saat membuat mesh: ' + error.message);
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                }
+            }, 100);
+        }
+        
+        function createMeshFromPointCloud(points) {
+            if (points.length < 3) {
+                alert('Tidak cukup points untuk membuat mesh!');
+                return null;
+            }
+            
+            // Create geometry with positions
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(points.length * 3);
+            const colors = new Float32Array(points.length * 3);
+            
+            for (let i = 0; i < points.length; i++) {
+                positions[i * 3] = points[i].x;
+                positions[i * 3 + 1] = points[i].y;
+                positions[i * 3 + 2] = points[i].z;
+                
+                colors[i * 3] = (points[i].r || 128) / 255;
+                colors[i * 3 + 1] = (points[i].g || 128) / 255;
+                colors[i * 3 + 2] = (points[i].b || 128) / 255;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            // Create indices for triangulation using a simple approach
+            // For better results, use Delaunay triangulation or Poisson reconstruction
+            const indices = createTriangulation(points);
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+            
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: true
+            });
+            
+            return new THREE.Mesh(geometry, material);
+        }
+        
+        function createTriangulation(points) {
+            // Improved triangulation using spatial hashing and angle-based selection
+            const indices = [];
+            const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
+            const maxDistance = resolution * 2.5;
+            
+            // Spatial hash grid for faster neighbor finding
+            const grid = new Map();
+            const gridSize = resolution;
+            
+            // Build spatial hash
+            points.forEach((point, index) => {
+                const gx = Math.floor(point.x / gridSize);
+                const gy = Math.floor(point.y / gridSize);
+                const gz = Math.floor(point.z / gridSize);
+                const key = `${gx},${gy},${gz}`;
+                
+                if (!grid.has(key)) {
+                    grid.set(key, []);
+                }
+                grid.get(key).push(index);
+            });
+            
+            // Create triangles with better quality
+            const processedPairs = new Set();
+            const triangleSet = new Set();
+            
+            for (let i = 0; i < points.length; i++) {
+                const point = points[i];
+                const gx = Math.floor(point.x / gridSize);
+                const gy = Math.floor(point.y / gridSize);
+                const gz = Math.floor(point.z / gridSize);
+                
+                // Get neighbors from surrounding cells
+                const neighbors = [];
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dz = -1; dz <= 1; dz++) {
+                            const key = `${gx + dx},${gy + dy},${gz + dz}`;
+                            const cellPoints = grid.get(key) || [];
+                            neighbors.push(...cellPoints);
+                        }
+                    }
+                }
+                
+                // Remove duplicates and self
+                const uniqueNeighbors = [...new Set(neighbors)].filter(idx => idx !== i);
+                
+                // Find nearby points
+                const nearby = uniqueNeighbors.filter(j => {
+                    const dist = Math.sqrt(
+                        Math.pow(points[j].x - point.x, 2) +
+                        Math.pow(points[j].y - point.y, 2) +
+                        Math.pow(points[j].z - point.z, 2)
+                    );
+                    return dist < maxDistance;
+                });
+                
+                // Create triangles with nearby points
+                for (let j = 0; j < nearby.length; j++) {
+                    const jIdx = nearby[j];
+                    if (jIdx <= i) continue;
+                    
+                    const pairKey = i < jIdx ? `${i},${jIdx}` : `${jIdx},${i}`;
+                    if (processedPairs.has(pairKey)) continue;
+                    
+                    // Find best third point
+                    let bestK = -1;
+                    let bestScore = Infinity;
+                    
+                    for (let k = 0; k < nearby.length; k++) {
+                        const kIdx = nearby[k];
+                        if (kIdx === i || kIdx === jIdx || kIdx <= jIdx) continue;
+                        
+                        const dist1 = Math.sqrt(
+                            Math.pow(points[jIdx].x - point.x, 2) +
+                            Math.pow(points[jIdx].y - point.y, 2) +
+                            Math.pow(points[jIdx].z - point.z, 2)
+                        );
+                        const dist2 = Math.sqrt(
+                            Math.pow(points[kIdx].x - point.x, 2) +
+                            Math.pow(points[kIdx].y - point.y, 2) +
+                            Math.pow(points[kIdx].z - point.z, 2)
+                        );
+                        const dist3 = Math.sqrt(
+                            Math.pow(points[kIdx].x - points[jIdx].x, 2) +
+                            Math.pow(points[kIdx].y - points[jIdx].y, 2) +
+                            Math.pow(points[kIdx].z - points[jIdx].z, 2)
+                        );
+                        
+                        // Prefer equilateral triangles
+                        const perimeter = dist1 + dist2 + dist3;
+                        const avgDist = perimeter / 3;
+                        const variance = (
+                            Math.pow(dist1 - avgDist, 2) +
+                            Math.pow(dist2 - avgDist, 2) +
+                            Math.pow(dist3 - avgDist, 2)
+                        ) / 3;
+                        
+                        if (variance < bestScore && dist1 < maxDistance && dist2 < maxDistance && dist3 < maxDistance) {
+                            bestScore = variance;
+                            bestK = kIdx;
+                        }
+                    }
+                    
+                    if (bestK !== -1) {
+                        const triKey = [i, jIdx, bestK].sort((a, b) => a - b).join(',');
+                        if (!triangleSet.has(triKey)) {
+                            triangleSet.add(triKey);
+                            indices.push(i, jIdx, bestK);
+                        }
+                    }
+                    
+                    processedPairs.add(pairKey);
+                }
+            }
+            
+            // Fallback: create simple triangles if not enough were created
+            if (indices.length < points.length) {
+                console.log('Using fallback triangulation');
+                const fallbackCount = Math.min(points.length - 2, Math.floor(points.length / 3) * 3);
+                for (let i = 0; i < fallbackCount; i += 3) {
+                    if (i + 2 < points.length) {
+                        const triKey = [i, i + 1, i + 2].join(',');
+                        if (!triangleSet.has(triKey)) {
+                            indices.push(i, i + 1, i + 2);
+                        }
+                    }
+                }
+            }
+            
+            console.log('Created', indices.length / 3, 'triangles from', points.length, 'points');
+            return new Uint32Array(indices);
+        }
+        
+        function exportSTL() {
+            if (!mesh) {
+                alert('Tidak ada mesh untuk di-export! Generate mesh terlebih dahulu.');
+                return;
+            }
+            
+            if (!mesh.geometry) {
+                alert('Mesh tidak memiliki geometry yang valid!');
+                return;
+            }
+            
+            try {
+                console.log('Starting STL export...');
+                console.log('Mesh geometry:', {
+                    hasPositions: !!mesh.geometry.attributes.position,
+                    hasIndices: !!mesh.geometry.index,
+                    vertexCount: mesh.geometry.attributes.position ? mesh.geometry.attributes.position.count : 0,
+                    indexCount: mesh.geometry.index ? mesh.geometry.index.count : 0
+                });
+                
+                // Convert Three.js geometry to STL format
+                const stlString = convertToSTL(mesh.geometry);
+                
+                if (!stlString || stlString.length < 100) {
+                    alert('STL data tidak valid. Pastikan mesh sudah di-generate dengan benar.\n\n' +
+                          'Tips: Pastikan ada cukup points dan mesh sudah di-generate.');
+                    console.error('Invalid STL string:', stlString ? stlString.substring(0, 200) : 'null');
+                    return;
+                }
+                
+                // Validate STL format
+                if (!stlString.includes('solid') || !stlString.includes('endsolid')) {
+                    alert('Format STL tidak valid!');
+                    console.error('Invalid STL format');
+                    return;
+                }
+                
+                // Create blob with proper MIME type
+                const blob = new Blob([stlString], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                
+                // Create download link
+                const a = document.createElement('a');
+                a.href = url;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.download = `kinect-scan-${timestamp}.stl`;
+                
+                // Trigger download
+                document.body.appendChild(a);
+                a.style.display = 'none';
+                a.click();
+                
+                // Cleanup
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                // Update status
+                const statusEl = document.getElementById('scanStatus');
+                if (statusEl) {
+                    const originalStatus = statusEl.textContent;
+                    statusEl.textContent = 'STL berhasil di-export!';
+                    setTimeout(() => {
+                        statusEl.textContent = originalStatus;
+                    }, 3000);
+                }
+                
+                console.log('STL exported successfully:', a.download);
+                console.log('STL file size:', (blob.size / 1024).toFixed(2), 'KB');
+                console.log('STL preview (first 500 chars):', stlString.substring(0, 500));
+                
+                // Show success message
+                alert(`STL berhasil di-export!\n\nFile: ${a.download}\nUkuran: ${(blob.size / 1024).toFixed(2)} KB\n\nFile dapat dibuka di software 3D seperti Blender, MeshLab, atau Cura.`);
+                
+            } catch (error) {
+                console.error('Error exporting STL:', error);
+                console.error('Error stack:', error.stack);
+                alert('Error saat export STL:\n\n' + error.message + '\n\nBuka Console (F12) untuk detail lebih lanjut.');
+            }
+        }
+        
+        function convertToSTL(geometry) {
+            // Convert Three.js geometry to STL ASCII format
+            // STL format requires proper formatting with spaces
+            if (!geometry || !geometry.attributes || !geometry.attributes.position) {
+                throw new Error('Invalid geometry: missing position attribute');
+            }
+            
+            let stl = 'solid kinect_scan\n';
+            
+            const positions = geometry.attributes.position.array;
+            const indices = geometry.index ? geometry.index.array : null;
+            
+            if (!positions || positions.length === 0) {
+                throw new Error('No position data in geometry');
+            }
+            
+            const vertexCount = positions.length / 3;
+            if (vertexCount < 3) {
+                throw new Error('Not enough vertices for STL (minimum 3 required)');
+            }
+            
+            let triangleCount = 0;
+            let skippedCount = 0;
+            
+            if (indices && indices.length > 0) {
+                // Use indexed geometry
+                console.log('Exporting indexed geometry with', indices.length / 3, 'triangles');
+                
+                for (let i = 0; i < indices.length; i += 3) {
+                    if (i + 2 >= indices.length) break;
+                    
+                    const idx1 = indices[i];
+                    const idx2 = indices[i + 1];
+                    const idx3 = indices[i + 2];
+                    
+                    // Validate indices
+                    if (idx1 >= vertexCount || idx2 >= vertexCount || idx3 >= vertexCount ||
+                        idx1 < 0 || idx2 < 0 || idx3 < 0) {
+                        skippedCount++;
+                        continue; // Skip invalid indices
+                    }
+                    
+                    const i1 = idx1 * 3;
+                    const i2 = idx2 * 3;
+                    const i3 = idx3 * 3;
+                    
+                    if (i1 + 2 >= positions.length || i2 + 2 >= positions.length || i3 + 2 >= positions.length) {
+                        skippedCount++;
+                        continue; // Skip invalid indices
+                    }
+                    
+                    const v1 = new THREE.Vector3(positions[i1], positions[i1 + 1], positions[i1 + 2]);
+                    const v2 = new THREE.Vector3(positions[i2], positions[i2 + 1], positions[i2 + 2]);
+                    const v3 = new THREE.Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2]);
+                    
+                    // Validate vertices (check for NaN or Infinity)
+                    if (!isValidVertex(v1) || !isValidVertex(v2) || !isValidVertex(v3)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    // Calculate normal
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+                    
+                    // Skip degenerate triangles
+                    const normalLength = normal.length();
+                    if (normalLength < 0.0001 || !isFinite(normalLength)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    normal.normalize();
+                    
+                    // Validate normal
+                    if (!isValidVertex(normal)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    // Format STL facet (proper indentation)
+                    stl += `  facet normal ${formatFloat(normal.x)} ${formatFloat(normal.y)} ${formatFloat(normal.z)}\n`;
+                    stl += `    outer loop\n`;
+                    stl += `      vertex ${formatFloat(v1.x)} ${formatFloat(v1.y)} ${formatFloat(v1.z)}\n`;
+                    stl += `      vertex ${formatFloat(v2.x)} ${formatFloat(v2.y)} ${formatFloat(v2.z)}\n`;
+                    stl += `      vertex ${formatFloat(v3.x)} ${formatFloat(v3.y)} ${formatFloat(v3.z)}\n`;
+                    stl += `    endloop\n`;
+                    stl += `  endfacet\n`;
+                    triangleCount++;
+                }
+            } else {
+                // Non-indexed geometry - create triangles from vertices
+                console.log('Exporting non-indexed geometry with', vertexCount, 'vertices');
+                
+                for (let i = 0; i < vertexCount - 2; i += 3) {
+                    if (i + 2 >= vertexCount) break;
+                    
+                    const v1 = new THREE.Vector3(
+                        positions[i * 3], 
+                        positions[i * 3 + 1], 
+                        positions[i * 3 + 2]
+                    );
+                    const v2 = new THREE.Vector3(
+                        positions[(i + 1) * 3], 
+                        positions[(i + 1) * 3 + 1], 
+                        positions[(i + 1) * 3 + 2]
+                    );
+                    const v3 = new THREE.Vector3(
+                        positions[(i + 2) * 3], 
+                        positions[(i + 2) * 3 + 1], 
+                        positions[(i + 2) * 3 + 2]
+                    );
+                    
+                    // Validate vertices
+                    if (!isValidVertex(v1) || !isValidVertex(v2) || !isValidVertex(v3)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    // Calculate normal
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+                    
+                    // Skip degenerate triangles
+                    const normalLength = normal.length();
+                    if (normalLength < 0.0001 || !isFinite(normalLength)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    normal.normalize();
+                    
+                    // Validate normal
+                    if (!isValidVertex(normal)) {
+                        skippedCount++;
+                        continue;
+                    }
+                    
+                    stl += `  facet normal ${formatFloat(normal.x)} ${formatFloat(normal.y)} ${formatFloat(normal.z)}\n`;
+                    stl += `    outer loop\n`;
+                    stl += `      vertex ${formatFloat(v1.x)} ${formatFloat(v1.y)} ${formatFloat(v1.z)}\n`;
+                    stl += `      vertex ${formatFloat(v2.x)} ${formatFloat(v2.y)} ${formatFloat(v2.z)}\n`;
+                    stl += `      vertex ${formatFloat(v3.x)} ${formatFloat(v3.y)} ${formatFloat(v3.z)}\n`;
+                    stl += `    endloop\n`;
+                    stl += `  endfacet\n`;
+                    triangleCount++;
+                }
+            }
+            
+            stl += 'endsolid kinect_scan\n';
+            
+            console.log('STL conversion complete:', {
+                triangles: triangleCount,
+                skipped: skippedCount,
+                fileSize: stl.length,
+                isValid: triangleCount > 0 && stl.includes('solid') && stl.includes('endsolid')
+            });
+            
+            if (triangleCount === 0) {
+                throw new Error('No valid triangles found in mesh. Try generating mesh again or adjust settings.');
+            }
+            
+            if (skippedCount > triangleCount) {
+                console.warn('Many triangles were skipped:', skippedCount, 'vs', triangleCount, 'valid');
+            }
+            
+            return stl;
+        }
+        
+        // Validate vertex (check for NaN, Infinity, etc.)
+        function isValidVertex(v) {
+            return v && 
+                   typeof v.x === 'number' && 
+                   typeof v.y === 'number' && 
+                   typeof v.z === 'number' &&
+                   isFinite(v.x) && 
+                   isFinite(v.y) && 
+                   isFinite(v.z) &&
+                   !isNaN(v.x) && 
+                   !isNaN(v.y) && 
+                   !isNaN(v.z);
+        }
+        
+        // Format float for STL (6 decimal places, handle -0.0 and edge cases)
+        function formatFloat(value) {
+            if (!isFinite(value) || isNaN(value)) {
+                return '0.000000';
+            }
+            if (Math.abs(value) < 0.000001) {
+                return '0.000000';
+            }
+            // Ensure exactly 6 decimal places
+            const formatted = value.toFixed(6);
+            // Handle -0.0 case
+            if (formatted === '-0.000000') {
+                return '0.000000';
+            }
+            return formatted;
+        }
+        
+        function clearScan() {
+            pointCloud = [];
+            filteredPointCloud = [];
+            mesh = null;
+            
+            if (scene) {
+                const oldPointCloud = scene.getObjectByName('pointCloud');
+                if (oldPointCloud) {
+                    scene.remove(oldPointCloud);
+                }
+                
+                const oldPreview = scene.getObjectByName('preview');
+                if (oldPreview) {
+                    scene.remove(oldPreview);
+                }
+                
+                const oldMesh = scene.getObjectByName('mesh');
+                if (oldMesh) {
+                    scene.remove(oldMesh);
+                }
+            }
+            
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('exportSTLBtn').disabled = true;
+            updateStats();
+            
+            console.log('Scan cleared');
+        }
+        
+        function updateStats() {
+            const totalPoints = pointCloud.length;
+            const filteredPoints = filteredPointCloud.length > 0 ? filteredPointCloud.length : totalPoints;
+            
+            document.getElementById('pointCount').textContent = filteredPoints.toLocaleString() + 
+                (filteredPoints !== totalPoints ? ` / ${totalPoints.toLocaleString()}` : '');
+            document.getElementById('frameCount').textContent = Math.ceil(totalPoints / 10000);
+            
+            const progress = Math.min(100, (filteredPoints / 100000) * 100);
+            document.getElementById('progressFill').style.width = progress + '%';
+            document.getElementById('progressFill').textContent = Math.round(progress) + '%';
+        }
+        
+        // Settings sliders - wait for DOM to be ready
+        function setupSliders() {
+            const maxPointsSlider = document.getElementById('maxPointsSlider');
+            const minDistanceSlider = document.getElementById('minDistanceSlider');
+            const maxDistanceSlider = document.getElementById('maxDistanceSlider');
+            const outlierSlider = document.getElementById('outlierSlider');
+            const meshResolutionSlider = document.getElementById('meshResolutionSlider');
+            
+            if (maxPointsSlider) {
+                maxPointsSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('maxPointsValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                });
+            }
+            
+            if (minDistanceSlider) {
+                minDistanceSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('minDistanceValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                    minDistance = parseFloat(e.target.value);
+                    // Re-filter point cloud
+                    if (pointCloud.length > 0) {
+                        filteredPointCloud = filterPointCloud(pointCloud);
+                        updatePointCloudDisplay();
+                        updateStats();
+                    }
+                });
+            }
+            
+            if (maxDistanceSlider) {
+                maxDistanceSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('maxDistanceValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                    maxDistance = parseFloat(e.target.value);
+                    // Re-filter point cloud
+                    if (pointCloud.length > 0) {
+                        filteredPointCloud = filterPointCloud(pointCloud);
+                        updatePointCloudDisplay();
+                        updateStats();
+                    }
+                });
+            }
+            
+            if (outlierSlider) {
+                outlierSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('outlierValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                    outlierThreshold = parseInt(e.target.value);
+                    // Re-filter point cloud (only if we have enough points)
+                    if (pointCloud.length > 100) {
+                        filteredPointCloud = filterPointCloud(pointCloud);
+                        updatePointCloudDisplay();
+                        updateStats();
+                    }
+                });
+            }
+            
+            if (meshResolutionSlider) {
+                meshResolutionSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('meshResolutionValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                });
+            }
+        }
+        
+        // Initialize
+        window.addEventListener('load', function() {
+            console.log('🚀 Initializing 3D Scanner...');
+            try {
+                // Setup sliders first
+                setupSliders();
+                console.log('✅ Sliders initialized');
+                
+                // Initialize viewer
+                initViewer();
+                console.log('✅ Viewer initialized');
+                
+                // Test Three.js after initialization
+                setTimeout(() => {
+                    console.log('🧪 Testing Three.js rendering...');
+                    testThreeJS();
+                }, 1000);
+                
+                // Initialize debug
+                updateDebugInfo('Aplikasi siap. Menunggu koneksi...');
+                updateDebugConnection('Not connected');
+                
+                // Wait a bit before connecting
+                setTimeout(() => {
+                    console.log('🔌 Attempting to connect...');
+                    connect();
+                }, 500);
+            } catch (error) {
+                console.error('❌ Error during initialization:', error);
+                updateDebugInfo('Error: ' + error.message);
+                alert('Error initializing aplikasi: ' + error.message);
+            }
+        });
+        
+        // Also setup on DOMContentLoaded as backup
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupSliders);
+        } else {
+            setupSliders();
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (renderer && camera) {
+                const container = document.getElementById('viewer');
+                if (container) {
+                    camera.aspect = container.clientWidth / container.clientHeight;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            }
+        });
+        
+        window.addEventListener('beforeunload', function() {
+            if (socket) {
+                socket.close();
+            }
+        });
+    </script>
+</body>
+</html>
+

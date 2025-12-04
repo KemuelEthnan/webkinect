@@ -61,5 +61,42 @@ namespace KinectServer
 
             return FrameSerializer.CreateBlob(_depthBitmap, Constants.CAPTURE_FILE_DEPTH);
         }
+
+        // Class untuk menyimpan raw depth data
+        public class RawDepthData
+        {
+            public int Width { get; set; }
+            public int Height { get; set; }
+            public int[] DepthValues { get; set; }  // Array of depth values in mm
+        }
+
+        // Serializes raw depth data untuk 3D scanning
+        public static RawDepthData SerializeRawDepth(this DepthImageFrame frame)
+        {
+            if (_depthData == null)
+            {
+                _depthWidth = frame.Width;
+                _depthHeight = frame.Height;
+                _depthData = new short[frame.PixelDataLength];
+            }
+
+            frame.CopyPixelDataTo(_depthData);
+
+            int[] depthValues = new int[_depthData.Length];
+            
+            for (int i = 0; i < _depthData.Length; i++)
+            {
+                // Extract depth value (remove player index bits)
+                int depth = _depthData[i] >> DepthImageFrame.PlayerIndexBitmaskWidth;
+                depthValues[i] = depth;
+            }
+
+            return new RawDepthData
+            {
+                Width = frame.Width,
+                Height = frame.Height,
+                DepthValues = depthValues
+            };
+        }
     }
 }

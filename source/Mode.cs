@@ -8,6 +8,8 @@ namespace KinectServer
     public enum Mode
     {
         Color,
-        Depth
+        Depth,
+        PointCloud,
+        RawDepth
     }
 }

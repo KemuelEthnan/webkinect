@@ -35,5 +35,16 @@ namespace KinectServer
                 }
             }
         }
+
+        public static string Serialize(object obj)
+        {
+            System.Runtime.Serialization.Json.DataContractJsonSerializer serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(obj.GetType());
+
+            using (System.IO.MemoryStream ms = new System.IO.MemoryStream())
+            {
+                serializer.WriteObject(ms, obj);
+                return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            }
+        }
     }
 }

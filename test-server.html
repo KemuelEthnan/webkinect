@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Kinect Server Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #1e1e1e;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .log-entry.error {
+            color: #f00;
+        }
+        .log-entry.success {
+            color: #0f0;
+        }
+        .log-entry.warning {
+            color: #ff0;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test Kinect Server Connection</h1>
+        <p>Tool ini untuk test apakah server Kinect bekerja dengan benar.</p>
+        
+        <div id="status" class="status disconnected">
+            Status: Tidak terhubung
+        </div>
+        
+        <div>
+            <button id="connectBtn" onclick="connect()">Connect to Server</button>
+            <button id="testColorBtn" onclick="testColor()" disabled>Test Color Mode</button>
+            <button id="testPointCloudBtn" onclick="testPointCloud()" disabled>Test PointCloud Mode</button>
+            <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        </div>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        let socket = null;
+        let connected = false;
+        let messageCount = 0;
+        let pointCloudCount = 0;
+        let skeletonCount = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(isConnected) {
+            connected = isConnected;
+            const statusDiv = document.getElementById('status');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const testColorBtn = document.getElementById('testColorBtn');
+            const testPointCloudBtn = document.getElementById('testPointCloudBtn');
+
+            if (isConnected) {
+                statusDiv.className = 'status connected';
+                statusDiv.textContent = 'Status: Terhubung ke ws://127.0.0.1:8181';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                testColorBtn.disabled = false;
+                testPointCloudBtn.disabled = false;
+            } else {
+                statusDiv.className = 'status disconnected';
+                statusDiv.textContent = 'Status: Tidak terhubung';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                testColorBtn.disabled = true;
+                testPointCloudBtn.disabled = true;
+            }
+        }
+
+        function connect() {
+            log('🔄 Connecting to ws://127.0.0.1:8181...', 'info');
+            
+            socket = new WebSocket("ws://127.0.0.1:8181");
+
+            socket.onopen = function() {
+                log('✅ Connected to server!', 'success');
+                updateStatus(true);
+            };
+
+            socket.onclose = function() {
+                log('❌ Disconnected from server', 'error');
+                updateStatus(false);
+            };
+
+            socket.onerror = function(error) {
+                log('❌ WebSocket error: ' + error, 'error');
+                updateStatus(false);
+            };
+
+            socket.onmessage = function(event) {
+                messageCount++;
+                
+                if (typeof event.data === "string") {
+                    log('📥 Received string data #' + messageCount + ' (length: ' + event.data.length + ' chars)', 'info');
+                    
+                    try {
+                        const data = JSON.parse(event.data);
+                        log('✅ Parsed JSON successfully. Keys: ' + Object.keys(data).join(', '), 'success');
+                        
+                        if (data.mode === 'PointCloud') {
+                            pointCloudCount++;
+                            const pointCount = data.data ? data.data.length : 0;
+                            log('✅✅✅ POINT CLOUD DATA #' + pointCloudCount + ' received! Points: ' + pointCount, 'success');
+                        } else if (data.skeletons) {
+                            skeletonCount++;
+                            log('⚠️ Skeleton data #' + skeletonCount + ' received (not point cloud)', 'warning');
+                        } else {
+                            log('⚠️ Unknown data format: ' + JSON.stringify(data).substring(0, 100), 'warning');
+                        }
+                    } catch (e) {
+                        log('❌ JSON parse error: ' + e.message, 'error');
+                        log('Raw data (first 200 chars): ' + event.data.substring(0, 200), 'error');
+                    }
+                } else if (event.data instanceof Blob) {
+                    log('📥 Received Blob data #' + messageCount + ' (size: ' + event.data.size + ' bytes)', 'info');
+                } else {
+                    log('⚠️ Unknown data type: ' + typeof event.data, 'warning');
+                }
+            };
+        }
+
+        function testColor() {
+            if (!connected || !socket) {
+                log('❌ Not connected!', 'error');
+                return;
+            }
+            log('📤 Sending "Color" mode request...', 'info');
+            socket.send("Color");
+        }
+
+        function testPointCloud() {
+            if (!connected || !socket) {
+                log('❌ Not connected!', 'error');
+                return;
+            }
+            log('📤 Sending "PointCloud" mode request...', 'info');
+            socket.send("PointCloud");
+            
+            // Send multiple times to ensure server receives it
+            setTimeout(() => {
+                log('📤 Sending "PointCloud" again (confirmation)...', 'info');
+                socket.send("PointCloud");
+            }, 100);
+            
+            setTimeout(() => {
+                log('📤 Sending "PointCloud" again (final confirmation)...', 'info');
+                socket.send("PointCloud");
+            }, 500);
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+            updateStatus(false);
+            log('🔌 Disconnected', 'info');
+        }
+
+        // Auto-connect on load
+        window.addEventListener('load', function() {
+            log('🚀 Test tool loaded. Click "Connect to Server" to start.', 'info');
+        });
+    </script>
+</body>
+</html>
+
+

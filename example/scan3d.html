@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinect 3D Scanner - Export STL</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            font-size: 1.1em;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .content {
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        .main-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        button.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+
+        #canvas-container {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            width: 100%;
+            height: 600px;
+        }
+
+        .info-panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .info-panel h2 {
+            margin-bottom: 15px;
+            color: #667eea;
+            font-size: 1.3em;
+        }
+
+        .info-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #666;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .info-item span {
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .scanning-indicator {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            background: #fff3cd;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .scanning-indicator.active {
+            display: block;
+        }
+
+        .scanning-indicator .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .slider-container {
+            margin: 15px 0;
+        }
+
+        .slider-container label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #666;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        input[type="number"] {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Kinect 3D Scanner</h1>
+            <div class="status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Menghubungkan ke server...</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="main-panel">
+                <div class="controls">
+                    <button id="connectBtn" onclick="connect()">Hubungkan</button>
+                    <button id="disconnectBtn" onclick="disconnect()" disabled>Putuskan</button>
+                    <button id="startScanBtn" onclick="startScanning()" disabled>Mulai Scan</button>
+                    <button id="stopScanBtn" onclick="stopScanning()" disabled>Stop Scan</button>
+                    <button id="clearBtn" onclick="clearPoints()" disabled class="danger">Hapus Points</button>
+                    <button id="exportBtn" onclick="exportSTL()" disabled class="success">Export STL</button>
+                </div>
+
+                <div id="canvas-container"></div>
+
+                <div class="scanning-indicator" id="scanningIndicator">
+                    <div class="spinner"></div>
+                    <div>Sedang scanning... <span id="frameCount">0</span> frames</div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="info-panel">
+                    <h2>📊 Informasi Scan</h2>
+                    <div class="info-item">
+                        <label>Total Points:</label>
+                        <span id="pointCount">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Frames Captured:</label>
+                        <span id="frameCountInfo">0</span>
+                    </div>
+                    <div class="info-item">
+                        <label>Status:</label>
+                        <span id="scanStatus">Tidak aktif</span>
+                    </div>
+                </div>
+
+                <div class="info-panel">
+                    <h2>⚙️ Pengaturan</h2>
+                    <div class="slider-container">
+                        <label>Min Depth (mm):</label>
+                        <input type="range" id="minDepth" min="850" max="2000" value="850" oninput="updateMinDepth(this.value)">
+                        <input type="number" id="minDepthValue" value="850" onchange="updateMinDepthSlider(this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <label>Max Depth (mm):</label>
+                        <input type="range" id="maxDepth" min="2000" max="4095" value="3000" oninput="updateMaxDepth(this.value)">
+                        <input type="number" id="maxDepthValue" value="3000" onchange="updateMaxDepthSlider(this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <label>Point Skip (untuk performa):</label>
+                        <input type="range" id="pointSkip" min="1" max="10" value="2" oninput="updatePointSkip(this.value)">
+                        <span id="pointSkipValue">2</span>
+                    </div>
+                </div>
+
+                <div class="info-panel">
+                    <h2>ℹ️ Instruksi</h2>
+                    <ol style="padding-left: 20px; line-height: 1.8;">
+                        <li>Pastikan server Kinect sudah berjalan</li>
+                        <li>Klik "Hubungkan" untuk terhubung ke server</li>
+                        <li>Atur Min/Max Depth sesuai kebutuhan</li>
+                        <li>Klik "Mulai Scan" untuk mulai capture</li>
+                        <li>Posisikan object di depan Kinect</li>
+                        <li>Klik "Stop Scan" setelah selesai</li>
+                        <li>Klik "Export STL" untuk download file</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection
+        var socket = null;
+        var connected = false;
+        var isScanning = false;
+        var pointCloud = [];
+        var frameCount = 0;
+
+        // Three.js setup
+        var scene, camera, renderer, pointCloudMesh;
+        var minDepth = 850;
+        var maxDepth = 3000;
+        var pointSkip = 2;
+
+        // Initialize Three.js
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 10000);
+            camera.position.set(0, 0, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Add grid helper
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+
+            // Add axes helper
+            const axesHelper = new THREE.AxesHelper(2);
+            scene.add(axesHelper);
+
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            // Create point cloud geometry
+            const geometry = new THREE.BufferGeometry();
+            const material = new THREE.PointsMaterial({ 
+                color: 0x00ff00, 
+                size: 0.02,
+                sizeAttenuation: true
+            });
+            pointCloudMesh = new THREE.Points(geometry, material);
+            scene.add(pointCloudMesh);
+
+            // Add orbit controls (simple implementation)
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMousePosition.x;
+                    const deltaY = e.clientY - previousMousePosition.y;
+                    
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
+                    const up = new THREE.Vector3(0, 1, 0);
+                    const right = new THREE.Vector3().crossVectors(camera.position, up).normalize();
+                    camera.position.applyAxisAngle(right, deltaY * 0.01);
+                    camera.lookAt(0, 0, 0);
+                    
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                }
+            });
+
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoom = e.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(zoom);
+            });
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // Update point cloud visualization
+        function updatePointCloud() {
+            if (pointCloud.length === 0) {
+                pointCloudMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+                return;
+            }
+
+            const positions = new Float32Array(pointCloud.length * 3);
+            for (let i = 0; i < pointCloud.length; i++) {
+                positions[i * 3] = pointCloud[i].x;
+                positions[i * 3 + 1] = pointCloud[i].y;
+                positions[i * 3 + 2] = pointCloud[i].z;
+            }
+
+            pointCloudMesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            pointCloudMesh.geometry.computeBoundingSphere();
+            
+            document.getElementById('pointCount').textContent = pointCloud.length.toLocaleString();
+        }
+
+        // WebSocket functions
+        function updateStatus(isConnected) {
+            connected = isConnected;
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const startScanBtn = document.getElementById('startScanBtn');
+
+            if (isConnected) {
+                indicator.classList.add('connected');
+                statusText.textContent = 'Terhubung ke server';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                startScanBtn.disabled = false;
+            } else {
+                indicator.classList.remove('connected');
+                statusText.textContent = 'Tidak terhubung';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                startScanBtn.disabled = true;
+                stopScanning();
+            }
+        }
+
+        function connect() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                return;
+            }
+
+            socket = new WebSocket("ws://127.0.0.1:8181");
+
+            socket.onopen = function() {
+                updateStatus(true);
+                // Request raw depth data mode
+                socket.send("RawDepth");
+            };
+
+            socket.onclose = function() {
+                updateStatus(false);
+            };
+
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateStatus(false);
+                alert('Error: Tidak dapat terhubung ke server. Pastikan server.exe sudah berjalan.');
+            };
+
+            socket.onmessage = function(event) {
+                if (typeof event.data === "string") {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.points && isScanning) {
+                            processDepthData(data);
+                        }
+                    } catch (e) {
+                        console.error('Error parsing data:', e);
+                    }
+                }
+            };
+        }
+
+        function disconnect() {
+            stopScanning();
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+            updateStatus(false);
+        }
+
+        function processDepthData(data) {
+            frameCount++;
+            document.getElementById('frameCount').textContent = frameCount;
+            document.getElementById('frameCountInfo').textContent = frameCount;
+
+            // Add points to point cloud
+            for (let i = 0; i < data.points.length; i += pointSkip) {
+                const point = data.points[i];
+                // Filter by depth range
+                if (point.depth >= minDepth && point.depth <= maxDepth) {
+                    pointCloud.push({
+                        x: point.x,
+                        y: point.y,
+                        z: point.z,
+                        depth: point.depth
+                    });
+                }
+            }
+
+            updatePointCloud();
+        }
+
+        function startScanning() {
+            if (!connected) return;
+            
+            isScanning = true;
+            frameCount = 0;
+            document.getElementById('startScanBtn').disabled = true;
+            document.getElementById('stopScanBtn').disabled = false;
+            document.getElementById('scanningIndicator').classList.add('active');
+            document.getElementById('scanStatus').textContent = 'Scanning aktif';
+        }
+
+        function stopScanning() {
+            isScanning = false;
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('stopScanBtn').disabled = true;
+            document.getElementById('scanningIndicator').classList.remove('active');
+            document.getElementById('scanStatus').textContent = 'Scanning selesai';
+            
+            if (pointCloud.length > 0) {
+                document.getElementById('exportBtn').disabled = false;
+                document.getElementById('clearBtn').disabled = false;
+            }
+        }
+
+        function clearPoints() {
+            if (confirm('Yakin ingin menghapus semua points?')) {
+                pointCloud = [];
+                frameCount = 0;
+                updatePointCloud();
+                document.getElementById('frameCountInfo').textContent = '0';
+                document.getElementById('exportBtn').disabled = true;
+                document.getElementById('clearBtn').disabled = true;
+            }
+        }
+
+        // Settings functions
+        function updateMinDepth(value) {
+            minDepth = parseInt(value);
+            document.getElementById('minDepthValue').value = value;
+        }
+
+        function updateMinDepthSlider(value) {
+            minDepth = parseInt(value);
+            document.getElementById('minDepth').value = value;
+        }
+
+        function updateMaxDepth(value) {
+            maxDepth = parseInt(value);
+            document.getElementById('maxDepthValue').value = value;
+        }
+
+        function updateMaxDepthSlider(value) {
+            maxDepth = parseInt(value);
+            document.getElementById('maxDepth').value = value;
+        }
+
+        function updatePointSkip(value) {
+            pointSkip = parseInt(value);
+            document.getElementById('pointSkipValue').textContent = value;
+        }
+
+        // STL Export function
+        function exportSTL() {
+            if (pointCloud.length === 0) {
+                alert('Tidak ada points untuk di-export!');
+                return;
+            }
+
+            // Simple mesh generation using Delaunay triangulation approximation
+            // For better results, use a proper surface reconstruction algorithm
+            const stlContent = generateSTL(pointCloud);
+            
+            // Download file
+            const blob = new Blob([stlContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'kinect_scan_' + new Date().getTime() + '.stl';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function generateSTL(points) {
+            if (points.length < 3) {
+                alert('Tidak cukup points untuk membuat mesh! Minimal 3 points diperlukan.');
+                return 'solid KinectScan\nendsolid KinectScan\n';
+            }
+
+            let stl = 'solid KinectScan\n';
+            
+            // Improved mesh generation using spatial hashing and nearest neighbor
+            const maxDistance = 0.1; // Maximum distance for connecting points (meters)
+            const triangles = [];
+            const processed = new Set();
+            
+            // Create spatial hash for faster neighbor lookup
+            const hashSize = 0.05; // 5cm grid cells
+            const spatialHash = {};
+            
+            points.forEach((p, i) => {
+                const hx = Math.floor(p.x / hashSize);
+                const hy = Math.floor(p.y / hashSize);
+                const hz = Math.floor(p.z / hashSize);
+                const key = `${hx},${hy},${hz}`;
+                if (!spatialHash[key]) spatialHash[key] = [];
+                spatialHash[key].push(i);
+            });
+
+            // Generate triangles using spatial neighbors
+            for (let i = 0; i < points.length; i++) {
+                const p1 = points[i];
+                const hx = Math.floor(p1.x / hashSize);
+                const hy = Math.floor(p1.y / hashSize);
+                const hz = Math.floor(p1.z / hashSize);
+                
+                // Check neighboring cells
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dz = -1; dz <= 1; dz++) {
+                            const key = `${hx+dx},${hy+dy},${hz+dz}`;
+                            if (!spatialHash[key]) continue;
+                            
+                            spatialHash[key].forEach(j => {
+                                if (i >= j) return; // Avoid duplicates
+                                
+                                const p2 = points[j];
+                                const dist12 = Math.sqrt(
+                                    Math.pow(p2.x - p1.x, 2) +
+                                    Math.pow(p2.y - p1.y, 2) +
+                                    Math.pow(p2.z - p1.z, 2)
+                                );
+                                
+                                if (dist12 > maxDistance) return;
+                                
+                                // Find third point to form triangle
+                                let bestK = -1;
+                                let minArea = Infinity;
+                                
+                                // Search in nearby cells
+                                for (let dx2 = -1; dx2 <= 1; dx2++) {
+                                    for (let dy2 = -1; dy2 <= 1; dy2++) {
+                                        for (let dz2 = -1; dz2 <= 1; dz2++) {
+                                            const key2 = `${hx+dx2},${hy+dy2},${hz+dz2}`;
+                                            if (!spatialHash[key2]) continue;
+                                            
+                                            spatialHash[key2].forEach(k => {
+                                                if (k === i || k === j) return;
+                                                
+                                                const p3 = points[k];
+                                                const dist13 = Math.sqrt(
+                                                    Math.pow(p3.x - p1.x, 2) +
+                                                    Math.pow(p3.y - p1.y, 2) +
+                                                    Math.pow(p3.z - p1.z, 2)
+                                                );
+                                                const dist23 = Math.sqrt(
+                                                    Math.pow(p3.x - p2.x, 2) +
+                                                    Math.pow(p3.y - p2.y, 2) +
+                                                    Math.pow(p3.z - p2.z, 2)
+                                                );
+                                                
+                                                if (dist13 > maxDistance || dist23 > maxDistance) return;
+                                                
+                                                // Calculate triangle area (smaller is better for dense mesh)
+                                                const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+                                                const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+                                                const cross = {
+                                                    x: v1.y * v2.z - v1.z * v2.y,
+                                                    y: v1.z * v2.x - v1.x * v2.z,
+                                                    z: v1.x * v2.y - v1.y * v2.x
+                                                };
+                                                const area = Math.sqrt(cross.x * cross.x + cross.y * cross.y + cross.z * cross.z) / 2;
+                                                
+                                                // Check if triangle is valid (not too flat)
+                                                if (area > 0.0001 && area < minArea) {
+                                                    minArea = area;
+                                                    bestK = k;
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                                
+                                if (bestK !== -1) {
+                                    const triKey = [i, j, bestK].sort().join(',');
+                                    if (!processed.has(triKey)) {
+                                        processed.add(triKey);
+                                        triangles.push([i, j, bestK]);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Write triangles to STL
+            triangles.forEach(tri => {
+                const p1 = points[tri[0]];
+                const p2 = points[tri[1]];
+                const p3 = points[tri[2]];
+
+                // Calculate normal
+                const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+                const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+                const normal = {
+                    x: v1.y * v2.z - v1.z * v2.y,
+                    y: v1.z * v2.x - v1.x * v2.z,
+                    z: v1.x * v2.y - v1.y * v2.x
+                };
+                const len = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+                if (len > 0) {
+                    normal.x /= len;
+                    normal.y /= len;
+                    normal.z /= len;
+                }
+
+                stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
+                stl += `    outer loop\n`;
+                stl += `      vertex ${p1.x.toFixed(6)} ${p1.y.toFixed(6)} ${p1.z.toFixed(6)}\n`;
+                stl += `      vertex ${p2.x.toFixed(6)} ${p2.y.toFixed(6)} ${p2.z.toFixed(6)}\n`;
+                stl += `      vertex ${p3.x.toFixed(6)} ${p3.y.toFixed(6)} ${p3.z.toFixed(6)}\n`;
+                stl += `    endloop\n`;
+                stl += `  endfacet\n`;
+            });
+
+            stl += 'endsolid KinectScan\n';
+            return stl;
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', function() {
+            initThreeJS();
+            connect();
+        });
+
+        window.addEventListener('beforeunload', function() {
+            disconnect();
+        });
+    </script>
+</body>
+</html>

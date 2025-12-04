@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Kinect - Example</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="pointcloud-processor.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+            font-size: 1.1em;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.connected {
+            background: #44ff44;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.scanning {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            animation: pulse-button 1s infinite;
+        }
+
+        @keyframes pulse-button {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .video-container {
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 30px;
+            position: relative;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #cameraImage {
+            max-width: 100%;
+            max-height: 600px;
+            display: block;
+        }
+
+        .placeholder {
+            color: #888;
+            font-size: 1.2em;
+        }
+
+        .data-panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .data-panel h2 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        #skeletonData {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .info p {
+            margin: 5px 0;
+        }
+
+        /* 3D Scanning Styles */
+        #viewer {
+            width: 100%;
+            height: 600px;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .panel h2 {
+            margin-bottom: 15px;
+            color: #667eea;
+            font-size: 1.3em;
+        }
+
+        .info-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #666;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .info-item span {
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .scan-progress {
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Web Kinect Example</h1>
+            <div class="status">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Menghubungkan ke server...</span>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="info">
+                <p><strong>Catatan:</strong> Pastikan server Kinect sudah berjalan di <code>ws://127.0.0.1:8181</code></p>
+                <p>Server dapat dijalankan dengan menjalankan <code>bin/server.exe</code></p>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('normal')">🎮 Normal Mode</button>
+                <button class="tab" onclick="switchTab('scanning')">📷 3D Scanning</button>
+            </div>
+
+            <!-- Normal Mode Tab -->
+            <div id="normalTab" class="tab-content active">
+                <div class="controls">
+                    <button id="connectBtn" onclick="connect()">Hubungkan</button>
+                    <button id="disconnectBtn" onclick="disconnect()" disabled>Putuskan Koneksi</button>
+                    <button id="colorBtn" onclick="setColorMode()" disabled>Mode Warna</button>
+                    <button id="depthBtn" onclick="setDepthMode()" disabled>Mode Depth</button>
+                </div>
+
+                <div class="video-container">
+                    <img id="cameraImage" style="display: none;" alt="Kinect Camera Feed">
+                    <div class="placeholder" id="placeholder">Tidak ada data kamera</div>
+                </div>
+
+                <div class="data-panel">
+                    <h2>📊 Skeleton Data</h2>
+                    <div id="skeletonData">Menunggu data skeleton...</div>
+                </div>
+            </div>
+
+            <!-- 3D Scanning Tab -->
+            <div id="scanningTab" class="tab-content">
+                <div class="content-grid">
+                    <div class="viewer-section">
+                        <div class="info">
+                            <p><strong>Instruksi 3D Scanning:</strong></p>
+                            <p>1. Pastikan Kinect terhubung dan objek berada di depan Kinect (jarak 0.85-4 meter)</p>
+                            <p>2. Klik "Mulai Scan" - sistem akan otomatis menangkap model 3D selama 10 detik</p>
+                            <p>3. Progress bar akan menunjukkan progress dari 0-100%</p>
+                            <p>4. Gerakkan objek atau pindahkan Kinect untuk mendapatkan berbagai sudut saat scanning</p>
+                            <p>5. Setelah scanning selesai (progress 100%), klik "Generate Mesh" untuk membuat 3D model</p>
+                            <p>6. Klik "Export STL" untuk menyimpan file .stl</p>
+                            <p><strong>Tips:</strong> Buka Console browser (F12) untuk melihat log debugging</p>
+                        </div>
+
+                        <div class="controls">
+                            <button id="startScanBtn" onclick="startScan()" disabled>Mulai Scan</button>
+                            <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
+                            <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
+                            <button id="clearBtn" onclick="clearScan()" disabled>Clear</button>
+                        </div>
+
+                        <div id="viewer"></div>
+                    </div>
+
+                    <div class="sidebar">
+                        <div class="panel">
+                            <h2>📊 Scan Info</h2>
+                            <div class="info-item">
+                                <label>Status:</label>
+                                <span id="scanStatus">Tidak aktif</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Point Count:</label>
+                                <span id="pointCount">0</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Frames Captured:</label>
+                                <span id="frameCount">0</span>
+                            </div>
+                            <div class="scan-progress">
+                                <label>Progress:</label>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <h2>⚙️ Settings</h2>
+                            <div class="info-item">
+                                <label>Max Points per Frame:</label>
+                                <input type="range" id="maxPointsSlider" min="1000" max="50000" value="10000" step="1000">
+                                <span id="maxPointsValue">10000</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Mesh Resolution:</label>
+                                <input type="range" id="meshResolutionSlider" min="0.01" max="0.1" value="0.05" step="0.01">
+                                <span id="meshResolutionValue">0.05</span>
+                            </div>
+                            <div class="info-item">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="enableICPCheckbox" checked style="width: auto;">
+                                    Enable ICP Alignment
+                                </label>
+                            </div>
+                            <div class="info-item">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="enableNoiseFilterCheckbox" checked style="width: auto;">
+                                    Enable Noise Filtering
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <h2>💾 Export</h2>
+                            <p>Setelah generate mesh, klik "Export STL" untuk menyimpan file.</p>
+                        </div>
+
+                        <div class="panel">
+                            <h2>🔍 Debug Info</h2>
+                            <div class="info-item">
+                                <label>Last Message:</label>
+                                <span id="debugMessage" style="font-size: 0.9em; color: #666;">-</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Data Received:</label>
+                                <span id="debugDataCount">0</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Point Cloud Frames:</label>
+                                <span id="pointCloudFramesCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var socket = null;
+        var connected = false;
+        var currentMode = 'normal'; // 'normal' or 'scanning'
+        
+        // 3D Scanning variables
+        var isScanning = false;
+        var pointCloud = [];
+        var mesh = null;
+        var scene, camera, renderer;
+        var viewerInitialized = false;
+        var debugDataCount = 0;
+        var frameCount = 0;
+        var scanTimer = null;
+        var scanStartTime = 0;
+        var scanDuration = 10000;
+        var dataReceivedDuringScan = 0;
+        var pointCloudDataReceived = 0;
+        
+        // Point cloud processing
+        var pointCloudProcessor = new PointCloudProcessor();
+        var pointCloudFrames = [];
+        var useICP = true;
+        var useNoiseFilter = true;
+        var kinectPosition = { x: 0, y: 0, z: 0 };
+
+        function switchTab(tab) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            if (tab === 'normal') {
+                document.querySelector('.tab:first-child').classList.add('active');
+                document.getElementById('normalTab').classList.add('active');
+                currentMode = 'normal';
+                // Switch back to Color mode if connected
+                if (connected && socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send("Color");
+                }
+            } else {
+                document.querySelector('.tab:last-child').classList.add('active');
+                document.getElementById('scanningTab').classList.add('active');
+                currentMode = 'scanning';
+                // Initialize 3D viewer if not already done
+                if (!viewerInitialized) {
+                    initViewer();
+                    viewerInitialized = true;
+                }
+                // Switch to PointCloud mode if connected
+                if (connected && socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send("PointCloud");
+                    console.log('📤 Switched to PointCloud mode via tab switch');
+                    // Send again to ensure mode switch
+                    setTimeout(() => {
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            socket.send("PointCloud");
+                            console.log('📤 Confirmed PointCloud mode switch');
+                        }
+                    }, 100);
+                }
+            }
+        }
+
+        function updateStatus(isConnected) {
+            connected = isConnected;
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const colorBtn = document.getElementById('colorBtn');
+            const depthBtn = document.getElementById('depthBtn');
+            const startScanBtn = document.getElementById('startScanBtn');
+
+            if (isConnected) {
+                indicator.classList.add('connected');
+                statusText.textContent = 'Terhubung ke server';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                colorBtn.disabled = false;
+                depthBtn.disabled = false;
+                if (startScanBtn) startScanBtn.disabled = false;
+            } else {
+                indicator.classList.remove('connected');
+                statusText.textContent = 'Tidak terhubung';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                colorBtn.disabled = true;
+                depthBtn.disabled = true;
+                if (startScanBtn) startScanBtn.disabled = true;
+            }
+        }
+
+        function connect() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log('Already connected');
+                return;
+            }
+
+            console.log('Connecting to ws://127.0.0.1:8181...');
+            socket = new WebSocket("ws://127.0.0.1:8181");
+
+            socket.onopen = function() {
+                console.log('Connected to server');
+                updateStatus(true);
+                // Set initial mode based on current tab
+                if (currentMode === 'scanning') {
+                    socket.send("PointCloud");
+                    console.log('📤 Sent PointCloud mode on connect');
+                    // Send again to ensure mode switch
+                    setTimeout(() => {
+                        if (socket && socket.readyState === WebSocket.OPEN) {
+                            socket.send("PointCloud");
+                            console.log('📤 Confirmed PointCloud mode on connect');
+                        }
+                    }, 100);
+                } else {
+                    socket.send("Color");
+                    console.log('📤 Sent Color mode on connect');
+                }
+            };
+
+            socket.onclose = function() {
+                console.log('Disconnected from server');
+                updateStatus(false);
+                document.getElementById('cameraImage').style.display = 'none';
+                document.getElementById('placeholder').style.display = 'block';
+            };
+
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                updateStatus(false);
+                alert('Error: Tidak dapat terhubung ke server. Pastikan server.exe sudah berjalan.');
+            };
+
+            socket.onmessage = function(event) {
+                // Skeleton data or Point Cloud (JSON string)
+                if (typeof event.data === "string") {
+                    // Count data received during scan
+                    if (isScanning) {
+                        dataReceivedDuringScan++;
+                    }
+                    
+                    try {
+                        // Log raw data untuk debugging (first 500 chars)
+                        const rawDataPreview = event.data.length > 500 ? event.data.substring(0, 500) + '...' : event.data;
+                        console.log('📥 Received string data, length:', event.data.length, 'chars', isScanning ? '(during scan)' : '');
+                        if (!isScanning || dataReceivedDuringScan <= 3) { // Only log first few during scan to avoid spam
+                            console.log('📥 Raw data preview:', rawDataPreview);
+                        }
+                        
+                        var data = JSON.parse(event.data);
+                        console.log('✅ Parsed JSON successfully. Keys:', Object.keys(data));
+                        console.log('📋 Full data structure:', {
+                            hasMode: !!data.mode,
+                            mode: data.mode,
+                            hasData: !!data.data,
+                            dataIsArray: Array.isArray(data.data),
+                            dataLength: data.data ? data.data.length : 0,
+                            hasSkeletons: !!data.skeletons,
+                            width: data.width,
+                            height: data.height
+                        });
+                        
+                        // Check if it's point cloud data (server sends: {mode: "PointCloud", data: [...], width, height})
+                        if (data.mode === 'PointCloud' && data.data && Array.isArray(data.data)) {
+                            // Count point cloud data received
+                            if (isScanning) {
+                                pointCloudDataReceived++;
+                            }
+                            
+                            // Create a new object in the format the rest of the JS expects
+                            const pointCloudPayload = { points: data.data };
+
+                            debugDataCount++;
+                            const debugMsg = `Received ${pointCloudPayload.points.length} points (Mode: ${currentMode}, Scanning: ${isScanning})`;
+                            console.log('✅✅✅ Point cloud data received!', {
+                                pointCount: pointCloudPayload.points.length,
+                                width: data.width,
+                                height: data.height,
+                                currentMode: currentMode,
+                                isScanning: isScanning,
+                                firstPoint: pointCloudPayload.points.length > 0 ? pointCloudPayload.points[0] : 'no points',
+                                totalPointCloudFrames: pointCloudDataReceived
+                            });
+                            
+                            // Update debug UI
+                            const debugMsgEl = document.getElementById('debugMessage');
+                            const debugCountEl = document.getElementById('debugDataCount');
+                            const pointCloudFramesEl = document.getElementById('pointCloudFramesCount');
+                            if (debugMsgEl) debugMsgEl.textContent = debugMsg;
+                            if (debugCountEl) debugCountEl.textContent = debugDataCount;
+                            if (pointCloudFramesEl) pointCloudFramesEl.textContent = pointCloudDataReceived;
+                            
+                            if (currentMode === 'scanning') {
+                                if (isScanning) {
+                                    // Pass the correctly formatted object
+                                    console.log('🔄 Processing point cloud data...');
+                                    processPointCloud(pointCloudPayload);
+                                } else {
+                                    console.log('⚠️ Point cloud data received but scanning not active');
+                                    if (debugMsgEl) debugMsgEl.textContent = 'Data received but scanning not started';
+                                }
+                            } else {
+                                console.log('⚠️ Point cloud data received but not in scanning mode');
+                                if (debugMsgEl) debugMsgEl.textContent = 'Data received but not in scanning tab';
+                            }
+                        } 
+                        // Check if it's skeleton data (server sends: {skeletons: [...]})
+                        else if (data.skeletons && Array.isArray(data.skeletons)) {
+                            // Only process skeleton data in normal mode
+                            if (currentMode === 'normal') {
+                                document.getElementById('skeletonData').textContent = 
+                                    JSON.stringify(data, null, 2);
+                                console.log('Skeleton data received:', data);
+                            } else {
+                                // In scanning mode, ignore skeleton data (it's from old Color mode frames)
+                                // But also try to force switch mode again if we keep receiving skeleton data
+                                if (isScanning) {
+                                    console.log('⚠️ Ignoring skeleton data in scanning mode - server mungkin belum switch mode');
+                                    console.log('🔄 Attempting to force switch to PointCloud mode again...');
+                                    
+                                    // Force switch again
+                                    if (socket && socket.readyState === WebSocket.OPEN) {
+                                        socket.send("PointCloud");
+                                        console.log('📤 Re-sent PointCloud mode request');
+                                    }
+                                    
+                                    const debugMsgEl = document.getElementById('debugMessage');
+                                    if (debugMsgEl) debugMsgEl.textContent = 'Server masih mengirim skeleton data - mencoba switch mode lagi...';
+                                }
+                            }
+                        } 
+                        // Check if it's point cloud data but with empty array (mode active but no valid points)
+                        else if (data.mode === 'PointCloud' && (!data.data || !Array.isArray(data.data))) {
+                            console.warn('⚠️ PointCloud mode detected but data format invalid:', {
+                                hasData: !!data.data,
+                                dataType: typeof data.data,
+                                dataValue: data.data
+                            });
+                            const debugMsgEl = document.getElementById('debugMessage');
+                            if (debugMsgEl) debugMsgEl.textContent = 'PointCloud mode active but data format invalid';
+                        }
+                        // Unknown data format
+                        else {
+                            console.warn('⚠️ Unknown JSON data format received:', {
+                                keys: Object.keys(data),
+                                hasMode: !!data.mode,
+                                mode: data.mode,
+                                hasSkeletons: !!data.skeletons,
+                                hasData: !!data.data,
+                                dataType: typeof data.data,
+                                currentMode: currentMode,
+                                fullData: JSON.stringify(data).substring(0, 200)
+                            });
+                            const debugMsgEl = document.getElementById('debugMessage');
+                            if (debugMsgEl) debugMsgEl.textContent = 'Unknown data format: ' + Object.keys(data).join(', ') + ' | Mode: ' + (data.mode || 'none');
+                        }
+                    } catch (e) {
+                        console.error('❌ Error parsing JSON data:', e);
+                        console.error('Raw data (first 200 chars):', event.data.substring(0, 200));
+                        const debugMsgEl = document.getElementById('debugMessage');
+                        if (debugMsgEl) debugMsgEl.textContent = 'Error parsing data: ' + e.message;
+                    }
+                }
+                // Camera feed (Blob) - only process in normal mode
+                else if (event.data instanceof Blob && currentMode === 'normal') {
+                    var url = URL.createObjectURL(event.data);
+                    var img = document.getElementById('cameraImage');
+                    img.src = url;
+                    img.style.display = 'block';
+                    document.getElementById('placeholder').style.display = 'none';
+                    
+                    // Revoke old URL to prevent memory leaks
+                    if (img.dataset.oldUrl) {
+                        URL.revokeObjectURL(img.dataset.oldUrl);
+                    }
+                    img.dataset.oldUrl = url;
+                }
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+            updateStatus(false);
+        }
+
+        function setColorMode() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Color");
+                console.log('Switched to Color mode');
+            }
+        }
+
+        function setDepthMode() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Depth");
+                console.log('Switched to Depth mode');
+            }
+        }
+
+        // ========== 3D Scanning Functions ==========
+        
+        function initViewer() {
+            const container = document.getElementById('viewer');
+            if (!container) return;
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+            
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 0, 3);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+            
+            // Add grid
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+            
+            // Add axes
+            const axesHelper = new THREE.AxesHelper(1);
+            scene.add(axesHelper);
+            
+            // Simple orbit controls
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMousePosition.x;
+                    const deltaY = e.clientY - previousMousePosition.y;
+                    
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
+                    camera.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), deltaY * 0.01);
+                    camera.lookAt(0, 0, 0);
+                }
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                const delta = e.deltaY * 0.001;
+                camera.position.multiplyScalar(1 + delta);
+            });
+            
+            animate();
+        }
+        
+        function animate() {
+            if (renderer && scene && camera) {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            }
+        }
+        
+        function processPointCloud(data) {
+            if (!data || !data.points || !Array.isArray(data.points)) {
+                console.warn('⚠️ Invalid point cloud data:', data);
+                const debugMsgEl = document.getElementById('debugMessage');
+                if (debugMsgEl) debugMsgEl.textContent = 'Error: Invalid point cloud data format';
+                return;
+            }
+            
+            // Log even if empty to help debugging
+            console.log('🔍 processPointCloud called with', data.points.length, 'points');
+            
+            if (data.points.length === 0) {
+                console.warn('⚠️ Received empty point cloud - mungkin objek tidak terdeteksi atau terlalu jauh/dekat');
+                const debugMsgEl = document.getElementById('debugMessage');
+                if (debugMsgEl) debugMsgEl.textContent = 'Warning: Empty point cloud - pastikan objek dalam range 0.85-4 meter';
+                // Still increment frame count to show that we're receiving data
+                frameCount++;
+                updateStats();
+                return;
+            }
+            
+            const maxPoints = parseInt(document.getElementById('maxPointsSlider').value);
+            let newPoints = data.points.slice(0, Math.min(data.points.length, maxPoints));
+            
+            if (newPoints.length === 0) {
+                frameCount++;
+                updateStats();
+                return;
+            }
+            
+            // Validate point structure
+            const firstPoint = newPoints[0];
+            if (!firstPoint || !firstPoint.hasOwnProperty('x') || !firstPoint.hasOwnProperty('y') || !firstPoint.hasOwnProperty('z')) {
+                console.error('❌ Invalid point structure:', firstPoint);
+                return;
+            }
+            
+            // Apply noise filtering if enabled
+            if (useNoiseFilter && newPoints.length > 10) {
+                console.log('🔧 Applying noise filtering...');
+                const beforeFilter = newPoints.length;
+                newPoints = pointCloudProcessor.statisticalOutlierRemoval(newPoints, 20, 2.0);
+                console.log(`✅ Noise filtering: ${beforeFilter} → ${newPoints.length} points`);
+            }
+            
+            // Store frame for ICP
+            pointCloudFrames.push([...newPoints]);
+            
+            // Transform to world coordinate (currently Kinect is stationary, so no transform)
+            // Future: if Kinect moves, apply transform here
+            newPoints = pointCloudProcessor.transformToWorldCoordinate(newPoints, null);
+            
+            // Apply ICP alignment if enabled and we have previous frames
+            if (useICP && pointCloud.length > 100 && newPoints.length > 10) {
+                console.log('🔧 Applying ICP alignment...');
+                const icpResult = pointCloudProcessor.icpAlign(newPoints, pointCloud, 10, 0.01);
+                if (icpResult.transform) {
+                    newPoints = icpResult.alignedPoints;
+                    console.log('✅ ICP alignment applied');
+                } else {
+                    console.log('⚠️ ICP alignment failed, using original points');
+                }
+            }
+            
+            // Update Kinect position estimate (for future tracking)
+            if (pointCloud.length === 0) {
+                kinectPosition = pointCloudProcessor.estimateKinectPosition(newPoints);
+            }
+            
+            // Add points to point cloud
+            pointCloud.push(...newPoints);
+            frameCount++;
+            
+            // Update display and stats
+            updatePointCloudDisplay();
+            updateStats();
+            
+            console.log('✅✅✅ Successfully added', newPoints.length, 'points. Total:', pointCloud.length, 'points from', frameCount, 'frames');
+            
+            const debugMsgEl = document.getElementById('debugMessage');
+            if (debugMsgEl) debugMsgEl.textContent = `✅ Added ${newPoints.length} points. Total: ${pointCloud.length} points`;
+        }
+        
+        function updatePointCloudDisplay() {
+            if (!scene) {
+                console.warn('Scene not initialized');
+                return;
+            }
+            
+            const oldPointCloud = scene.getObjectByName('pointCloud');
+            if (oldPointCloud) {
+                scene.remove(oldPointCloud);
+            }
+            
+            if (pointCloud.length === 0) {
+                console.log('No points to display');
+                return;
+            }
+            
+            console.log('Updating point cloud display with', pointCloud.length, 'points');
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(pointCloud.length * 3);
+            const colors = new Float32Array(pointCloud.length * 3);
+            
+            // Calculate bounds for camera positioning
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            
+            for (let i = 0; i < pointCloud.length; i++) {
+                const point = pointCloud[i];
+                const x = point.x || 0;
+                const y = point.y || 0;
+                const z = point.z || 0;
+                
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+                
+                colors[i * 3] = (point.r || 128) / 255;
+                colors[i * 3 + 1] = (point.g || 128) / 255;
+                colors[i * 3 + 2] = (point.b || 128) / 255;
+                
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+                minZ = Math.min(minZ, z);
+                maxZ = Math.max(maxZ, z);
+            }
+            
+            console.log('Point cloud bounds:', {
+                x: [minX, maxX],
+                y: [minY, maxY],
+                z: [minZ, maxZ]
+            });
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 0.02, // Increased size for better visibility
+                vertexColors: true,
+                sizeAttenuation: false
+            });
+            
+            const points = new THREE.Points(geometry, material);
+            points.name = 'pointCloud';
+            scene.add(points);
+            
+            // Adjust camera to view the point cloud
+            if (camera && !isNaN(minX) && !isNaN(maxX)) {
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                const centerZ = (minZ + maxZ) / 2;
+                const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+                
+                if (size > 0) {
+                    camera.position.set(centerX, centerY, centerZ + size * 1.5);
+                    camera.lookAt(centerX, centerY, centerZ);
+                }
+            }
+        }
+        
+        function startScan() {
+            if (!connected) {
+                alert('Harus terhubung ke server terlebih dahulu!');
+                return;
+            }
+            
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert('Koneksi WebSocket tidak aktif! Silakan hubungkan terlebih dahulu.');
+                return;
+            }
+            
+            console.log('🚀 Starting auto-scan...');
+            isScanning = true;
+            pointCloud = [];
+            pointCloudFrames = []; // Reset frames for ICP
+            debugDataCount = 0;
+            frameCount = 0;
+            dataReceivedDuringScan = 0;
+            pointCloudDataReceived = 0;
+            scanStartTime = Date.now();
+            
+            // Get settings
+            useICP = document.getElementById('enableICPCheckbox').checked;
+            useNoiseFilter = document.getElementById('enableNoiseFilterCheckbox').checked;
+            
+            // Clear any existing timer
+            if (scanTimer) {
+                clearInterval(scanTimer);
+                scanTimer = null;
+            }
+            
+            // Update UI
+            document.getElementById('startScanBtn').disabled = true;
+            document.getElementById('startScanBtn').classList.add('scanning');
+            document.getElementById('startScanBtn').textContent = 'Scanning...';
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('scanStatus').textContent = 'Scanning...';
+            document.getElementById('pointCount').textContent = '0';
+            document.getElementById('frameCount').textContent = '0';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+            
+            // Send PointCloud mode request directly and multiple times to ensure server receives it
+            console.log('🔄 Switching server mode to PointCloud...');
+            
+            // Send immediately
+            socket.send("PointCloud");
+            console.log('📤 Sent PointCloud mode request to server (attempt 1)');
+            
+            // Send multiple times with delays to ensure server processes it
+            setTimeout(() => {
+                if (socket && socket.readyState === WebSocket.OPEN && isScanning) {
+                    socket.send("PointCloud");
+                    console.log('📤 Sent PointCloud mode request to server (attempt 2)');
+                }
+            }, 50);
+            
+            setTimeout(() => {
+                if (socket && socket.readyState === WebSocket.OPEN && isScanning) {
+                    socket.send("PointCloud");
+                    console.log('📤 Sent PointCloud mode request to server (attempt 3)');
+                }
+            }, 150);
+            
+            setTimeout(() => {
+                if (socket && socket.readyState === WebSocket.OPEN && isScanning) {
+                    socket.send("PointCloud");
+                    console.log('📤 Sent PointCloud mode request to server (attempt 4)');
+                }
+            }, 300);
+            
+            // Start progress bar update timer
+            scanTimer = setInterval(() => {
+                if (!isScanning) {
+                    clearInterval(scanTimer);
+                    return;
+                }
+                
+                const elapsed = Date.now() - scanStartTime;
+                const progress = Math.min(100, (elapsed / scanDuration) * 100);
+                
+                const progressFillEl = document.getElementById('progressFill');
+                if (progressFillEl) {
+                    progressFillEl.style.width = progress + '%';
+                    progressFillEl.textContent = Math.round(progress) + '%';
+                }
+                
+                // Auto-stop after scan duration
+                if (elapsed >= scanDuration) {
+                    console.log('⏱️ Scan duration completed, stopping automatically...');
+                    stopScan();
+                }
+            }, 50); // Update every 50ms for smooth progress bar
+            
+            // Update debug message
+            const debugMsgEl = document.getElementById('debugMessage');
+            if (debugMsgEl) debugMsgEl.textContent = 'Waiting for PointCloud data from server...';
+        }
+        
+        function stopScan() {
+            if (!isScanning) return; // Already stopped
+            
+            console.log('🛑 Stopping scan...');
+            isScanning = false;
+            
+            // Clear timer
+            if (scanTimer) {
+                clearInterval(scanTimer);
+                scanTimer = null;
+            }
+            
+            // Update UI
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('startScanBtn').classList.remove('scanning');
+            document.getElementById('startScanBtn').textContent = 'Mulai Scan';
+            document.getElementById('scanStatus').textContent = pointCloud.length > 0 ? 'Selesai - Siap untuk Generate Mesh' : 'Selesai - Tidak ada data';
+            
+            // Set progress to 100%
+            const progressFillEl = document.getElementById('progressFill');
+            if (progressFillEl) {
+                progressFillEl.style.width = '100%';
+                progressFillEl.textContent = '100%';
+            }
+            
+            // Log statistics
+            console.log('📊 Scan Statistics:', {
+                totalDataReceived: dataReceivedDuringScan,
+                pointCloudDataReceived: pointCloudDataReceived,
+                skeletonDataReceived: dataReceivedDuringScan - pointCloudDataReceived,
+                pointsCollected: pointCloud.length,
+                framesProcessed: frameCount
+            });
+            
+            // Enable generate mesh button if we have points
+            if (pointCloud.length > 0) {
+                document.getElementById('generateMeshBtn').disabled = false;
+                console.log('✅ Scan completed with', pointCloud.length, 'points from', frameCount, 'frames');
+            } else {
+                console.warn('⚠️ Scan completed but no points collected');
+                
+                // Provide detailed error message based on what we received
+                let errorMsg = 'Scanning selesai tapi tidak ada data yang terkumpul.\n\n';
+                
+                if (dataReceivedDuringScan === 0) {
+                    errorMsg += '❌ MASALAH: Server TIDAK mengirim data sama sekali!\n\n';
+                    errorMsg += 'Solusi:\n';
+                    errorMsg += '1. Pastikan server.exe berjalan\n';
+                    errorMsg += '2. Restart server.exe\n';
+                    errorMsg += '3. Cek apakah Kinect terhubung dan terdeteksi\n';
+                    errorMsg += '4. Tampilkan console server untuk lihat error:\n';
+                    errorMsg += '   - Edit source/Program.cs line 26\n';
+                    errorMsg += '   - Ganti CONSOLE_HIDE menjadi CONSOLE_SHOW\n';
+                    errorMsg += '   - Recompile server\n';
+                } else if (pointCloudDataReceived === 0) {
+                    errorMsg += '❌ MASALAH: Server mengirim data tapi BUKAN point cloud!\n\n';
+                    errorMsg += 'Server mengirim ' + (dataReceivedDuringScan - pointCloudDataReceived) + ' skeleton data.\n';
+                    errorMsg += 'Server TIDAK switch ke PointCloud mode.\n\n';
+                    errorMsg += 'Solusi:\n';
+                    errorMsg += '1. Restart server.exe\n';
+                    errorMsg += '2. Pastikan server support PointCloud mode\n';
+                    errorMsg += '3. Cek console server untuk error\n';
+                } else {
+                    errorMsg += '⚠️ Server mengirim ' + pointCloudDataReceived + ' frame point cloud, tapi semua kosong.\n\n';
+                    errorMsg += 'Pastikan:\n';
+                    errorMsg += '- Objek berada dalam range 0.85-4 meter dari Kinect\n';
+                    errorMsg += '- Objek cukup besar dan jelas\n';
+                    errorMsg += '- Lighting cukup\n';
+                    errorMsg += '- Objek tidak transparan atau reflektif\n';
+                }
+                
+                alert(errorMsg);
+            }
+            
+            // Switch back to Color mode to stop sending point cloud data
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Color");
+                console.log('📤 Switched back to Color mode');
+            }
+        }
+        
+        function generateMesh() {
+            if (pointCloud.length === 0) {
+                alert('Tidak ada point cloud untuk di-generate mesh! Silakan lakukan scanning terlebih dahulu.');
+                return;
+            }
+            
+            if (pointCloud.length < 3) {
+                alert('Point cloud terlalu sedikit! Minimal 3 points diperlukan untuk membuat mesh.');
+                return;
+            }
+            
+            console.log('🔧 Generating mesh from', pointCloud.length, 'points...');
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('generateMeshBtn').textContent = 'Generating...';
+            
+            // Use requestAnimationFrame to prevent UI blocking
+            requestAnimationFrame(() => {
+                try {
+                    mesh = createMeshFromPointCloud(pointCloud);
+                    
+                    const oldMesh = scene.getObjectByName('mesh');
+                    if (oldMesh) {
+                        scene.remove(oldMesh);
+                    }
+                    
+                    // Also hide point cloud when showing mesh
+                    const oldPointCloud = scene.getObjectByName('pointCloud');
+                    if (oldPointCloud) {
+                        oldPointCloud.visible = false;
+                    }
+                    
+                    if (mesh) {
+                        mesh.name = 'mesh';
+                        scene.add(mesh);
+                        console.log('✅ Mesh generated successfully');
+                    } else {
+                        console.error('❌ Failed to generate mesh');
+                        alert('Gagal membuat mesh. Coba sesuaikan Mesh Resolution atau scan ulang dengan lebih banyak points.');
+                    }
+                    
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                    document.getElementById('exportSTLBtn').disabled = mesh !== null;
+                } catch (error) {
+                    console.error('❌ Error generating mesh:', error);
+                    alert('Error saat membuat mesh: ' + error.message);
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                }
+            });
+        }
+        
+        function createMeshFromPointCloud(points) {
+            if (points.length < 3) {
+                alert('Tidak cukup points untuk membuat mesh!');
+                return null;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(points.length * 3);
+            const colors = new Float32Array(points.length * 3);
+            
+            for (let i = 0; i < points.length; i++) {
+                positions[i * 3] = points[i].x;
+                positions[i * 3 + 1] = points[i].y;
+                positions[i * 3 + 2] = points[i].z;
+                
+                colors[i * 3] = (points[i].r || 128) / 255;
+                colors[i * 3 + 1] = (points[i].g || 128) / 255;
+                colors[i * 3 + 2] = (points[i].b || 128) / 255;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const indices = createTriangulation(points);
+            geometry.setIndex(indices);
+            geometry.computeVertexNormals();
+            
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: true
+            });
+            
+            return new THREE.Mesh(geometry, material);
+        }
+        
+        function createTriangulation(points) {
+            const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
+            
+            // Use improved mesh reconstruction from processor
+            const meshData = pointCloudProcessor.createImprovedMesh(points, resolution);
+            
+            if (meshData.faces.length === 0) {
+                // Fallback to simple triangulation
+                const indices = [];
+                for (let i = 0; i < Math.min(points.length - 2, 1000); i += 3) {
+                    if (i + 2 < points.length) {
+                        indices.push(i, i + 1, i + 2);
+                    }
+                }
+                return new Uint32Array(indices);
+            }
+            
+            // Convert faces to flat index array
+            const indices = [];
+            for (const face of meshData.faces) {
+                indices.push(face[0], face[1], face[2]);
+            }
+            
+            return new Uint32Array(indices);
+        }
+        
+        function exportSTL() {
+            if (!mesh || !mesh.geometry) {
+                alert('Tidak ada mesh untuk di-export! Generate mesh terlebih dahulu.');
+                return;
+            }
+            
+            console.log('💾 Exporting STL file...');
+            try {
+                const stlString = convertToSTL(mesh.geometry);
+                const blob = new Blob([stlString], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.download = 'kinect-scan-' + timestamp + '.stl';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                console.log('✅ STL file exported successfully:', a.download);
+                alert('File STL berhasil di-export: ' + a.download);
+            } catch (error) {
+                console.error('❌ Error exporting STL:', error);
+                alert('Error saat mengekspor STL: ' + error.message);
+            }
+        }
+        
+        function convertToSTL(geometry) {
+            let stl = 'solid kinect_scan\n';
+            const positions = geometry.attributes.position.array;
+            const indices = geometry.index ? geometry.index.array : null;
+            
+            if (indices) {
+                for (let i = 0; i < indices.length; i += 3) {
+                    const i1 = indices[i] * 3;
+                    const i2 = indices[i + 1] * 3;
+                    const i3 = indices[i + 2] * 3;
+                    
+                    const v1 = new THREE.Vector3(positions[i1], positions[i1 + 1], positions[i1 + 2]);
+                    const v2 = new THREE.Vector3(positions[i2], positions[i2 + 1], positions[i2 + 2]);
+                    const v3 = new THREE.Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2]);
+                    
+                    const normal = new THREE.Vector3().crossVectors(
+                        new THREE.Vector3().subVectors(v2, v1),
+                        new THREE.Vector3().subVectors(v3, v1)
+                    ).normalize();
+                    
+                    stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
+                    stl += `    outer loop\n`;
+                    stl += `      vertex ${v1.x.toFixed(6)} ${v1.y.toFixed(6)} ${v1.z.toFixed(6)}\n`;
+                    stl += `      vertex ${v2.x.toFixed(6)} ${v2.y.toFixed(6)} ${v2.z.toFixed(6)}\n`;
+                    stl += `      vertex ${v3.x.toFixed(6)} ${v3.y.toFixed(6)} ${v3.z.toFixed(6)}\n`;
+                    stl += `    endloop\n`;
+                    stl += `  endfacet\n`;
+                }
+            } else {
+                const vertexCount = positions.length / 3;
+                for (let i = 0; i < vertexCount - 2; i += 3) {
+                    const v1 = new THREE.Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+                    const v2 = new THREE.Vector3(positions[(i + 1) * 3], positions[(i + 1) * 3 + 1], positions[(i + 1) * 3 + 2]);
+                    const v3 = new THREE.Vector3(positions[(i + 2) * 3], positions[(i + 2) * 3 + 1], positions[(i + 2) * 3 + 2]);
+                    
+                    const normal = new THREE.Vector3().crossVectors(
+                        new THREE.Vector3().subVectors(v2, v1),
+                        new THREE.Vector3().subVectors(v3, v1)
+                    ).normalize();
+                    
+                    stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
+                    stl += `    outer loop\n`;
+                    stl += `      vertex ${v1.x.toFixed(6)} ${v1.y.toFixed(6)} ${v1.z.toFixed(6)}\n`;
+                    stl += `      vertex ${v2.x.toFixed(6)} ${v2.y.toFixed(6)} ${v2.z.toFixed(6)}\n`;
+                    stl += `      vertex ${v3.x.toFixed(6)} ${v3.y.toFixed(6)} ${v3.z.toFixed(6)}\n`;
+                    stl += `    endloop\n`;
+                    stl += `  endfacet\n`;
+                }
+            }
+            
+            stl += 'endsolid kinect_scan\n';
+            return stl;
+        }
+        
+        function clearScan() {
+            // Stop scanning if active
+            if (isScanning) {
+                stopScan();
+            }
+            
+            pointCloud = [];
+            pointCloudFrames = [];
+            mesh = null;
+            debugDataCount = 0;
+            frameCount = 0;
+            dataReceivedDuringScan = 0;
+            pointCloudDataReceived = 0;
+            kinectPosition = { x: 0, y: 0, z: 0 };
+            
+            if (scene) {
+                const oldPointCloud = scene.getObjectByName('pointCloud');
+                if (oldPointCloud) {
+                    scene.remove(oldPointCloud);
+                }
+                
+                const oldMesh = scene.getObjectByName('mesh');
+                if (oldMesh) {
+                    scene.remove(oldMesh);
+                }
+            }
+            
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('exportSTLBtn').disabled = true;
+            document.getElementById('scanStatus').textContent = 'Tidak aktif';
+            const debugMsgEl = document.getElementById('debugMessage');
+            const debugCountEl = document.getElementById('debugDataCount');
+            if (debugMsgEl) debugMsgEl.textContent = '-';
+            if (debugCountEl) debugCountEl.textContent = '0';
+            
+            // Reset progress bar
+            const progressFillEl = document.getElementById('progressFill');
+            if (progressFillEl) {
+                progressFillEl.style.width = '0%';
+                progressFillEl.textContent = '0%';
+            }
+            
+            updateStats();
+        }
+        
+        function updateStats() {
+            const pointCountEl = document.getElementById('pointCount');
+            const frameCountEl = document.getElementById('frameCount');
+            const progressFillEl = document.getElementById('progressFill');
+            
+            // Update point count
+            if (pointCountEl) pointCountEl.textContent = pointCloud.length.toLocaleString();
+            
+            // Update frame count (actual number of frames captured)
+            if (frameCountEl) frameCountEl.textContent = frameCount.toLocaleString();
+            
+            // Update progress bar (based on point count, max 200k points = 100%)
+            if (progressFillEl) {
+                const maxPoints = 200000; // Maximum expected points for a good scan
+                const progress = Math.min(100, (pointCloud.length / maxPoints) * 100);
+                progressFillEl.style.width = progress + '%';
+                progressFillEl.textContent = Math.round(progress) + '%';
+            }
+        }
+
+        // Settings sliders
+        document.addEventListener('DOMContentLoaded', function() {
+            const maxPointsSlider = document.getElementById('maxPointsSlider');
+            const meshResolutionSlider = document.getElementById('meshResolutionSlider');
+            
+            if (maxPointsSlider) {
+                maxPointsSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('maxPointsValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                });
+            }
+            
+            if (meshResolutionSlider) {
+                meshResolutionSlider.addEventListener('input', (e) => {
+                    const valueEl = document.getElementById('meshResolutionValue');
+                    if (valueEl) valueEl.textContent = e.target.value;
+                });
+            }
+        });
+
+        // Auto-connect on page load
+        window.addEventListener('load', function() {
+            connect();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            disconnect();
+        });
+    </script>
+</body>
+</html>
+
+
