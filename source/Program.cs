@@ -356,7 +356,7 @@ namespace KinectServer
                                     {
                                         Console.WriteLine("[COLOR] Sending skeleton data (" + users.Count + " users)");
                                     }
-                                    
+
                                     foreach (var socket in _clients)
                                     {
                                         if (socket != null && socket.IsAvailable)
@@ -372,6 +372,24 @@ namespace KinectServer
                     {
                         if (cFrame != null)
                         {
+                            try
+                            {
+                                byte[] colorImage = cFrame.Serialize();
+                                if (colorImage != null && colorImage.Length > 0)
+                                {
+                                    foreach (var socket in _clients)
+                                    {
+                                        if (socket != null && socket.IsAvailable)
+                                        {
+                                            socket.Send(colorImage);
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("[COLOR] ❌ Error sending color image: " + ex.Message);
+                            }
                         }
                     }
                     break;

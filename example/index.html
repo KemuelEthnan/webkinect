@@ -344,7 +344,7 @@
                         <div class="info">
                             <p><strong>Instruksi 3D Scanning:</strong></p>
                             <p>1. Pastikan Kinect terhubung dan objek berada di depan Kinect (jarak 0.85-4 meter)</p>
-                            <p>2. Klik "Mulai Scan" - sistem akan otomatis menangkap model 3D selama 10 detik</p>
+                            <p>2. Klik "Mulai Scan" - sistem akan otomatis menangkap model 3D selama 15 detik</p>
                             <p>3. Progress bar akan menunjukkan progress dari 0-100%</p>
                             <p>4. Gerakkan objek atau pindahkan Kinect untuk mendapatkan berbagai sudut saat scanning</p>
                             <p>5. Setelah scanning selesai (progress 100%), klik "Generate Mesh" untuk membuat 3D model</p>
@@ -353,7 +353,8 @@
                         </div>
 
                         <div class="controls">
-                            <button id="startScanBtn" onclick="startScan()" disabled>Mulai Scan</button>
+                            <button id="startScanBtn" onclick="startScan()" disabled>Reset & Start Capture</button>
+                            <button id="stopScanBtn" onclick="stopScan()" disabled>Stop Capture</button>
                             <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
                             <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
                             <button id="clearBtn" onclick="clearScan()" disabled>Clear</button>
@@ -399,14 +400,14 @@
                             </div>
                             <div class="info-item">
                                 <label style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="checkbox" id="enableICPCheckbox" checked style="width: auto;">
-                                    Enable ICP Alignment
+                                    <input type="checkbox" id="enableICPCheckbox" style="width: auto;">
+                                    Enable ICP Alignment (⚠️ Causes lag - disabled by default)
                                 </label>
                             </div>
                             <div class="info-item">
                                 <label style="display: flex; align-items: center; gap: 8px;">
-                                    <input type="checkbox" id="enableNoiseFilterCheckbox" checked style="width: auto;">
-                                    Enable Noise Filtering
+                                    <input type="checkbox" id="enableNoiseFilterCheckbox" style="width: auto;">
+                                    Enable Noise Filtering (⚠️ Causes lag - disabled by default)
                                 </label>
                             </div>
                         </div>
@@ -441,9 +442,10 @@
         var socket = null;
         var connected = false;
         var currentMode = 'normal'; // 'normal' or 'scanning'
-        
+
         // 3D Scanning variables
         var isScanning = false;
+        var isCaptureActive = true; // New flag for auto-capture control
         var pointCloud = [];
         var mesh = null;
         var scene, camera, renderer;
@@ -452,16 +454,24 @@
         var frameCount = 0;
         var scanTimer = null;
         var scanStartTime = 0;
-        var scanDuration = 10000;
+        var scanDuration = 15000; // Auto-stop after 15 seconds
         var dataReceivedDuringScan = 0;
         var pointCloudDataReceived = 0;
+        var maxTotalPoints = 200000; // Limit to 200k points for performance
+        var autoCaptureTimer = null;
         
         // Point cloud processing
         var pointCloudProcessor = new PointCloudProcessor();
         var pointCloudFrames = [];
-        var useICP = true;
-        var useNoiseFilter = true;
+        var useICP = false; // Disabled by default - too CPU intensive!
+        var useNoiseFilter = false; // Disabled by default - too CPU intensive!
         var kinectPosition = { x: 0, y: 0, z: 0 };
+
+        // Throttling to prevent freeze
+        var lastProcessTime = 0;
+        var processingThrottle = 100; // Process max once every 100ms
+        var renderThrottle = 50; // Render max once every 50ms
+        var lastRenderTime = 0;
 
         function switchTab(tab) {
             // Update tab buttons
@@ -480,15 +490,43 @@
                 document.querySelector('.tab:last-child').classList.add('active');
                 document.getElementById('scanningTab').classList.add('active');
                 currentMode = 'scanning';
+
+                console.log('🔵 Switched to 3D Scanning tab - AUTO-CAPTURE MODE (15 seconds)');
+                console.log('📌 Auto-capture will run for 15 seconds then stop automatically');
+                console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
+
                 // Initialize 3D viewer if not already done
                 if (!viewerInitialized) {
+                    console.log('🔵 Initializing 3D viewer...');
                     initViewer();
                     viewerInitialized = true;
                 }
+
                 // Switch to PointCloud mode if connected
                 if (connected && socket && socket.readyState === WebSocket.OPEN) {
                     socket.send("PointCloud");
                     console.log('📤 Switched to PointCloud mode via tab switch');
+
+                    // Enable buttons
+                    const startBtn = document.getElementById('startScanBtn');
+                    const stopBtn = document.getElementById('stopScanBtn');
+                    if (startBtn) startBtn.disabled = false;
+                    if (stopBtn) stopBtn.disabled = false;
+
+                    // Reset and start auto-capture with 15 second timer
+                    isCaptureActive = true;
+                    scanStartTime = Date.now();
+
+                    // Update status
+                    document.getElementById('scanStatus').textContent = 'Auto-capturing for 15 seconds...';
+
+                    // Auto-stop after 15 seconds
+                    if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
+                    autoCaptureTimer = setTimeout(() => {
+                        console.log('⏱️ 15 seconds elapsed - auto-stopping capture');
+                        stopCapture();
+                    }, scanDuration);
+
                     // Send again to ensure mode switch
                     setTimeout(() => {
                         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -630,17 +668,35 @@
                             if (debugCountEl) debugCountEl.textContent = debugDataCount;
                             if (pointCloudFramesEl) pointCloudFramesEl.textContent = pointCloudDataReceived;
                             
+                            // 🔥 RADICAL SIMPLIFICATION: If we're in scanning tab, ALWAYS process point cloud data
+                            // This bypasses all the complex isScanning flag logic that keeps failing
                             if (currentMode === 'scanning') {
-                                if (isScanning) {
-                                    // Pass the correctly formatted object
-                                    console.log('🔄 Processing point cloud data...');
-                                    processPointCloud(pointCloudPayload);
-                                } else {
-                                    console.log('⚠️ Point cloud data received but scanning not active');
-                                    if (debugMsgEl) debugMsgEl.textContent = 'Data received but scanning not started';
+                                // Check if we should still capture (auto-stop after limit or duration)
+                                if (!isCaptureActive) {
+                                    console.log('⏸️ Capture stopped - ignoring new data');
+                                    return;
                                 }
+
+                                // Check if we've hit the point limit
+                                if (pointCloud.length >= maxTotalPoints) {
+                                    console.log('⏸️ Max points reached (' + maxTotalPoints.toLocaleString() + ') - stopping capture');
+                                    stopCapture();
+                                    return;
+                                }
+
+                                console.log('🔄 AUTO-PROCESSING point cloud data (simplified mode)...');
+                                console.log('📊 Received ' + pointCloudPayload.points.length + ' points');
+
+                                // Always process in scanning mode - no button check needed
+                                processPointCloud(pointCloudPayload);
+
+                                // Update scan info
+                                const pointCountEl = document.getElementById('pointCount');
+                                const frameCountEl = document.getElementById('frameCount');
+                                if (pointCountEl) pointCountEl.textContent = pointCloud.length.toLocaleString();
+                                if (frameCountEl) frameCountEl.textContent = frameCount;
                             } else {
-                                console.log('⚠️ Point cloud data received but not in scanning mode');
+                                console.log('⚠️ Point cloud data received but not in scanning tab');
                                 if (debugMsgEl) debugMsgEl.textContent = 'Data received but not in scanning tab';
                             }
                         } 
@@ -812,16 +868,24 @@
         }
         
         function processPointCloud(data) {
+            // 🔥 THROTTLING: Skip if processing too frequently (prevent freeze)
+            const now = Date.now();
+            if (now - lastProcessTime < processingThrottle) {
+                console.log('⏭️ Skipping frame (throttle) - too fast');
+                return;
+            }
+            lastProcessTime = now;
+
             if (!data || !data.points || !Array.isArray(data.points)) {
                 console.warn('⚠️ Invalid point cloud data:', data);
                 const debugMsgEl = document.getElementById('debugMessage');
                 if (debugMsgEl) debugMsgEl.textContent = 'Error: Invalid point cloud data format';
                 return;
             }
-            
+
             // Log even if empty to help debugging
-            console.log('🔍 processPointCloud called with', data.points.length, 'points');
-            
+            console.log('🔍 Processing', data.points.length, 'points (Frame #' + frameCount + ')');
+
             if (data.points.length === 0) {
                 console.warn('⚠️ Received empty point cloud - mungkin objek tidak terdeteksi atau terlalu jauh/dekat');
                 const debugMsgEl = document.getElementById('debugMessage');
@@ -848,30 +912,41 @@
                 return;
             }
             
-            // Apply noise filtering if enabled
+            // OPTIMIZATION: Skip heavy processing for real-time performance
+            // Noise filtering and ICP are disabled by default
+            // You can enable them in settings if needed (but may cause lag)
+
             if (useNoiseFilter && newPoints.length > 10) {
-                console.log('🔧 Applying noise filtering...');
-                const beforeFilter = newPoints.length;
-                newPoints = pointCloudProcessor.statisticalOutlierRemoval(newPoints, 20, 2.0);
-                console.log(`✅ Noise filtering: ${beforeFilter} → ${newPoints.length} points`);
+                console.log('🔧 Applying noise filtering... (this may cause lag)');
+                try {
+                    const beforeFilter = newPoints.length;
+                    newPoints = pointCloudProcessor.statisticalOutlierRemoval(newPoints, 20, 2.0);
+                    console.log(`✅ Noise filtering: ${beforeFilter} → ${newPoints.length} points`);
+                } catch (err) {
+                    console.error('❌ Noise filtering failed:', err);
+                }
             }
-            
+
             // Store frame for ICP
             pointCloudFrames.push([...newPoints]);
-            
+
             // Transform to world coordinate (currently Kinect is stationary, so no transform)
             // Future: if Kinect moves, apply transform here
             newPoints = pointCloudProcessor.transformToWorldCoordinate(newPoints, null);
-            
+
             // Apply ICP alignment if enabled and we have previous frames
             if (useICP && pointCloud.length > 100 && newPoints.length > 10) {
-                console.log('🔧 Applying ICP alignment...');
-                const icpResult = pointCloudProcessor.icpAlign(newPoints, pointCloud, 10, 0.01);
-                if (icpResult.transform) {
-                    newPoints = icpResult.alignedPoints;
-                    console.log('✅ ICP alignment applied');
-                } else {
-                    console.log('⚠️ ICP alignment failed, using original points');
+                console.log('🔧 Applying ICP alignment... (this may cause lag)');
+                try {
+                    const icpResult = pointCloudProcessor.icpAlign(newPoints, pointCloud, 10, 0.01);
+                    if (icpResult.transform) {
+                        newPoints = icpResult.alignedPoints;
+                        console.log('✅ ICP alignment applied');
+                    } else {
+                        console.log('⚠️ ICP alignment failed, using original points');
+                    }
+                } catch (err) {
+                    console.error('❌ ICP alignment failed:', err);
                 }
             }
             
@@ -883,10 +958,18 @@
             // Add points to point cloud
             pointCloud.push(...newPoints);
             frameCount++;
-            
-            // Update display and stats
-            updatePointCloudDisplay();
-            updateStats();
+
+            console.log('✅ Added ' + newPoints.length + ' points. Total: ' + pointCloud.length.toLocaleString());
+
+            // Update display and stats (throttled)
+            requestAnimationFrame(() => {
+                const now = Date.now();
+                if (now - lastRenderTime >= renderThrottle) {
+                    updatePointCloudDisplay();
+                    lastRenderTime = now;
+                }
+                updateStats();
+            });
             
             console.log('✅✅✅ Successfully added', newPoints.length, 'points. Total:', pointCloud.length, 'points from', frameCount, 'frames');
             
@@ -977,25 +1060,45 @@
         }
         
         function startScan() {
+            console.log('🔵🔵🔵 startScan() called - SIMPLIFIED MODE 🔵🔵🔵');
+
             if (!connected) {
                 alert('Harus terhubung ke server terlebih dahulu!');
+                console.error('❌ Cannot start scan: not connected');
                 return;
             }
-            
+
             if (!socket || socket.readyState !== WebSocket.OPEN) {
                 alert('Koneksi WebSocket tidak aktif! Silakan hubungkan terlebih dahulu.');
+                console.error('❌ Cannot start scan: WebSocket not open');
                 return;
             }
-            
-            console.log('🚀 Starting auto-scan...');
-            isScanning = true;
+
+            console.log('🚀 Starting REAL-TIME CAPTURE (15 seconds, max 200k points)...');
+            console.log('📌 Mode: Simplified auto-capture');
+            console.log('📌 Duration: 15 seconds');
+            console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
+
+            // Reset data
             pointCloud = [];
-            pointCloudFrames = []; // Reset frames for ICP
+            pointCloudFrames = [];
             debugDataCount = 0;
             frameCount = 0;
             dataReceivedDuringScan = 0;
             pointCloudDataReceived = 0;
             scanStartTime = Date.now();
+
+            // Set flags
+            isScanning = true;
+            window.isScanning = true;
+            isCaptureActive = true;
+
+            // Auto-stop after 15 seconds
+            if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
+            autoCaptureTimer = setTimeout(() => {
+                console.log('⏱️ 15 seconds elapsed - auto-stopping capture');
+                stopCapture();
+            }, scanDuration);
             
             // Get settings
             useICP = document.getElementById('enableICPCheckbox').checked;
@@ -1075,11 +1178,35 @@
             if (debugMsgEl) debugMsgEl.textContent = 'Waiting for PointCloud data from server...';
         }
         
+        function stopCapture() {
+            console.log('🛑 Stopping capture...');
+            isCaptureActive = false;
+            isScanning = false;
+
+            // Clear timers
+            if (autoCaptureTimer) {
+                clearTimeout(autoCaptureTimer);
+                autoCaptureTimer = null;
+            }
+
+            // Update UI
+            document.getElementById('scanStatus').textContent = pointCloud.length > 0 ?
+                'Capture stopped - ' + pointCloud.length.toLocaleString() + ' points collected' :
+                'Capture stopped - No data';
+
+            // Enable generate mesh if we have points
+            if (pointCloud.length > 0) {
+                document.getElementById('generateMeshBtn').disabled = false;
+                console.log('✅ Capture stopped. Total: ' + pointCloud.length.toLocaleString() + ' points from ' + frameCount + ' frames');
+            }
+        }
+
         function stopScan() {
             if (!isScanning) return; // Already stopped
-            
+
             console.log('🛑 Stopping scan...');
             isScanning = false;
+            stopCapture();
             
             // Clear timer
             if (scanTimer) {
@@ -1438,8 +1565,24 @@
 
         // Auto-connect on page load
         window.addEventListener('load', function() {
+            console.log('🔵 Page loaded, auto-connecting...');
             connect();
         });
+
+        // Periodic state check for debugging
+        setInterval(() => {
+            if (currentMode === 'scanning') {
+                const scanBtn = document.getElementById('startScanBtn');
+                const hasScanningClass = scanBtn ? scanBtn.classList.contains('scanning') : false;
+                if (hasScanningClass && !isScanning) {
+                    console.warn('⚠️⚠️⚠️ INCONSISTENT STATE DETECTED!');
+                    console.warn('Button says "Scanning..." but isScanning = false');
+                    console.warn('Forcing isScanning = true...');
+                    isScanning = true;
+                    window.isScanning = true;
+                }
+            }
+        }, 1000); // Check every second
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', function() {

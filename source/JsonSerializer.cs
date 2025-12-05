@@ -21,39 +21,64 @@ namespace KinectServer
         {
             if (skeletons == null || mapper == null) return null;
 
-            var trackedSkeletons = new List<object>();
-
-            foreach (var skeleton in skeletons)
+            try
             {
-                if (skeleton.TrackingState == SkeletonTrackingState.Tracked)
+                var result = new StringBuilder();
+                result.Append("{\"skeletons\":[");
+
+                bool firstSkeleton = true;
+                foreach (var skeleton in skeletons)
                 {
-                    var joints = new List<object>();
-                    foreach (Joint joint in skeleton.Joints)
+                    if (skeleton.TrackingState == SkeletonTrackingState.Tracked)
                     {
-                        if (joint.TrackingState == JointTrackingState.Tracked)
+                        if (!firstSkeleton) result.Append(",");
+                        firstSkeleton = false;
+
+                        result.Append("{");
+                        result.AppendFormat("\"id\":{0},", skeleton.TrackingId);
+                        result.AppendFormat("\"position\":{{\"x\":{0},\"y\":{1},\"z\":{2}}},",
+                            skeleton.Position.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                            skeleton.Position.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                            skeleton.Position.Z.ToString("F6", System.Globalization.CultureInfo.InvariantCulture));
+
+                        result.Append("\"joints\":[");
+
+                        bool firstJoint = true;
+                        foreach (Joint joint in skeleton.Joints)
                         {
-                            var depthPoint = mapper.MapSkeletonPointToDepthPoint(joint.Position, DepthImageFormat.Resolution640x480Fps30);
-                            var colorPoint = mapper.MapSkeletonPointToColorPoint(joint.Position, ColorImageFormat.RgbResolution640x480Fps30);
-
-                            joints.Add(new
+                            if (joint.TrackingState == JointTrackingState.Tracked)
                             {
-                                name = joint.JointType.ToString(),
-                                position = new { x = joint.Position.X, y = joint.Position.Y, z = joint.Position.Z },
-                                depth = new { x = depthPoint.X, y = depthPoint.Y },
-                                color = new { x = colorPoint.X, y = colorPoint.Y }
-                            });
-                        }
-                    }
+                                if (!firstJoint) result.Append(",");
+                                firstJoint = false;
 
-                    trackedSkeletons.Add(new
-                    {
-                        id = skeleton.TrackingId,
-                        position = new { x = skeleton.Position.X, y = skeleton.Position.Y, z = skeleton.Position.Z },
-                        joints = joints
-                    });
+                                var depthPoint = mapper.MapSkeletonPointToDepthPoint(joint.Position, DepthImageFormat.Resolution640x480Fps30);
+                                var colorPoint = mapper.MapSkeletonPointToColorPoint(joint.Position, ColorImageFormat.RgbResolution640x480Fps30);
+
+                                result.Append("{");
+                                result.AppendFormat("\"name\":\"{0}\",", joint.JointType.ToString());
+                                result.AppendFormat("\"position\":{{\"x\":{0},\"y\":{1},\"z\":{2}}},",
+                                    joint.Position.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                                    joint.Position.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                                    joint.Position.Z.ToString("F6", System.Globalization.CultureInfo.InvariantCulture));
+                                result.AppendFormat("\"depth\":{{\"x\":{0},\"y\":{1}}},", depthPoint.X, depthPoint.Y);
+                                result.AppendFormat("\"color\":{{\"x\":{0},\"y\":{1}}}", colorPoint.X, colorPoint.Y);
+                                result.Append("}");
+                            }
+                        }
+
+                        result.Append("]}"); // Close joints array and skeleton object
+                    }
                 }
+
+                result.Append("]}"); // Close skeletons array and root object
+
+                return result.ToString();
             }
-            return ToJson(new { skeletons = trackedSkeletons });
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SERIALIZE] ❌ Exception in SerializeSkeletons: " + ex.Message);
+                return null;
+            }
         }
 
         public static string SerializePointCloud(KinectSensor sensor, DepthImageFrame depthFrame, ColorImageFrame colorFrame)
@@ -76,76 +101,156 @@ namespace KinectServer
                     colorFrame.CopyPixelDataTo(colorPixels);
                 }
 
-                var points = new List<object>();
+                var pointsJson = new StringBuilder();
                 CoordinateMapper coordMapper = sensor.CoordinateMapper;
 
                 int validPoints = 0;
                 int skippedPoints = 0;
+                int outOfRangeCount = 0;
+                int invalidSkeletonCount = 0;
 
-                for (int depthIndex = 0; depthIndex < depthPixels.Length; depthIndex++)
+                // IMPORTANT: Downsample to avoid overwhelming WebSocket and client
+                // Skip every N pixels to reduce point count (640x480 = 307,200 points)
+                // With skipFactor=4, we get ~19,200 points per frame (much more manageable)
+                int skipFactor = 4; // Process every 4th pixel horizontally and vertically
+
+                // Sample some depth values for debugging
+                int sampleCount = 0;
+                int minDepthSeen = int.MaxValue;
+                int maxDepthSeen = int.MinValue;
+
+                for (int y = 0; y < depthFrame.Height; y += skipFactor)
                 {
-                    short depth = depthPixels[depthIndex];
-                    if (depth >= depthFrame.MinDepth && depth <= depthFrame.MaxDepth)
+                    for (int x = 0; x < depthFrame.Width; x += skipFactor)
                     {
-                        var depthPoint = new DepthImagePoint
+                        int depthIndex = x + y * depthFrame.Width;
+
+                        if (depthIndex >= depthPixels.Length) continue;
+
+                        short depthRaw = depthPixels[depthIndex];
+
+                        // Extract actual depth value (shift right 3 bits for Kinect v1)
+                        int depth = depthRaw >> DepthImageFrame.PlayerIndexBitmaskWidth;
+
+                        // Track depth range for debugging
+                        if (depth > 0)
                         {
-                            X = depthIndex % depthFrame.Width,
-                            Y = depthIndex / depthFrame.Width,
-                            Depth = depth
-                        };
-
-                        var skelPoint = coordMapper.MapDepthPointToSkeletonPoint(depthFrame.Format, depthPoint);
-
-                        byte r = 255, g = 255, b = 255;
-
-                        if (colorFrame != null && colorPixels != null)
-                        {
-                            var colorPoint = coordMapper.MapDepthPointToColorPoint(depthFrame.Format, depthPoint, colorFrame.Format);
-                            if (colorPoint.X >= 0 && colorPoint.X < colorFrame.Width && colorPoint.Y >= 0 && colorPoint.Y < colorFrame.Height)
+                            minDepthSeen = Math.Min(minDepthSeen, depth);
+                            maxDepthSeen = Math.Max(maxDepthSeen, depth);
+                            if (sampleCount < 10)
                             {
-                                int colorIndex = (colorPoint.X + colorPoint.Y * colorFrame.Width) * colorFrame.BytesPerPixel;
-                                if (colorIndex >= 0 && colorIndex < colorPixels.Length - (colorFrame.BytesPerPixel - 1))
-                                {
-                                    r = colorPixels[colorIndex + 2];
-                                    g = colorPixels[colorIndex + 1];
-                                    b = colorPixels[colorIndex + 0];
-                                }
+                                if (sampleCount == 0) Console.WriteLine("[SERIALIZE] Sample depth values (raw >> 3):");
+                                Console.WriteLine($"[SERIALIZE]   Pixel ({x},{y}): raw={depthRaw}, depth={depth}");
+                                sampleCount++;
                             }
                         }
-                        points.Add(new { x = skelPoint.X, y = skelPoint.Y, z = skelPoint.Z, r, g, b });
-                        validPoints++;
+
+                        // Filter depth values - accept reasonable range
+                        // Kinect v1: typically 400-8000mm (0.4m - 8m) - wider range to capture more
+                        if (depth > 400 && depth < 8000)
+                        {
+                            var depthPoint = new DepthImagePoint
+                            {
+                                X = x,
+                                Y = y,
+                                Depth = depthRaw  // Use raw value for API
+                            };
+
+                            var skelPoint = coordMapper.MapDepthPointToSkeletonPoint(depthFrame.Format, depthPoint);
+
+                            // Skip invalid skeleton points (NaN or Infinity)
+                            if (float.IsNaN(skelPoint.X) || float.IsNaN(skelPoint.Y) || float.IsNaN(skelPoint.Z) ||
+                                float.IsInfinity(skelPoint.X) || float.IsInfinity(skelPoint.Y) || float.IsInfinity(skelPoint.Z))
+                            {
+                                invalidSkeletonCount++;
+                                continue;
+                            }
+
+                            byte r = 128, g = 128, b = 128; // Default gray color
+
+                            if (colorFrame != null && colorPixels != null)
+                            {
+                                var colorPoint = coordMapper.MapDepthPointToColorPoint(depthFrame.Format, depthPoint, colorFrame.Format);
+                                if (colorPoint.X >= 0 && colorPoint.X < colorFrame.Width && colorPoint.Y >= 0 && colorPoint.Y < colorFrame.Height)
+                                {
+                                    int colorIndex = (colorPoint.X + colorPoint.Y * colorFrame.Width) * colorFrame.BytesPerPixel;
+                                    if (colorIndex >= 0 && colorIndex < colorPixels.Length - (colorFrame.BytesPerPixel - 1))
+                                    {
+                                        // BGR format in Kinect
+                                        r = colorPixels[colorIndex + 2];
+                                        g = colorPixels[colorIndex + 1];
+                                        b = colorPixels[colorIndex + 0];
+                                    }
+                                }
+                            }
+
+                            // Manual JSON construction to avoid DataContract serialization issues
+                            if (validPoints > 0) pointsJson.Append(",");
+                            pointsJson.Append("{");
+                            pointsJson.AppendFormat("\"x\":{0},\"y\":{1},\"z\":{2},\"r\":{3},\"g\":{4},\"b\":{5}",
+                                skelPoint.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                                skelPoint.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                                skelPoint.Z.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                                r, g, b);
+                            pointsJson.Append("}");
+
+                            validPoints++;
+                        }
+                        else
+                        {
+                            outOfRangeCount++;
+                        }
                     }
-                    else
-                    {
-                        skippedPoints++;
-                    }
                 }
 
-                Console.WriteLine("[SERIALIZE] Valid points: " + validPoints + ", Skipped: " + skippedPoints);
-
-                if (points.Count == 0)
+                Console.WriteLine("[SERIALIZE] Valid points: " + validPoints + ", Out of range: " + outOfRangeCount + ", Invalid skeleton: " + invalidSkeletonCount);
+                Console.WriteLine("[SERIALIZE] Depth frame MinDepth: " + depthFrame.MinDepth + ", MaxDepth: " + depthFrame.MaxDepth);
+                if (minDepthSeen != int.MaxValue)
                 {
-                    Console.WriteLine("[SERIALIZE] WARNING: No valid points found! All depth values out of range.");
-                    Console.WriteLine("[SERIALIZE] Depth range: " + depthFrame.MinDepth + " - " + depthFrame.MaxDepth);
+                    Console.WriteLine("[SERIALIZE] Actual depth range seen: " + minDepthSeen + " - " + maxDepthSeen + " mm");
                 }
 
-                var result = ToJson(new { mode = Mode.PointCloud.ToString(), data = points, width = depthFrame.Width, height = depthFrame.Height });
-                
-                if (result == null)
+                if (validPoints == 0)
                 {
-                    Console.WriteLine("[SERIALIZE] ERROR: ToJson returned null!");
+                    Console.WriteLine("[SERIALIZE] WARNING: No valid points found!");
+                    Console.WriteLine("[SERIALIZE] This could mean:");
+                    Console.WriteLine("[SERIALIZE]   1. No object in Kinect range (0.4m - 8m)");
+                    Console.WriteLine("[SERIALIZE]   2. Kinect depth sensor not working");
+                    Console.WriteLine("[SERIALIZE]   3. All depth values are invalid or out of range");
+                    Console.WriteLine("[SERIALIZE]   4. All skeleton points are NaN/Infinity");
                 }
-                else
+
+                // Manual JSON construction - this avoids DataContract serialization issues
+                var result = new StringBuilder();
+                result.Append("{");
+                result.AppendFormat("\"mode\":\"{0}\",", Mode.PointCloud.ToString());
+                result.Append("\"data\":[");
+                result.Append(pointsJson.ToString());
+                result.Append("],");
+                result.AppendFormat("\"width\":{0},", depthFrame.Width);
+                result.AppendFormat("\"height\":{0}", depthFrame.Height);
+                result.Append("}");
+
+                string jsonResult = result.ToString();
+
+                if (jsonResult == null || jsonResult.Length == 0)
                 {
-                    Console.WriteLine("[SERIALIZE] JSON created: " + result.Length + " bytes, " + points.Count + " points");
+                    Console.WriteLine("[SERIALIZE] ERROR: JSON result is null or empty!");
+                    return null;
                 }
-                
-                return result;
+
+                Console.WriteLine("[SERIALIZE] ✅ JSON created: " + jsonResult.Length + " bytes, " + validPoints + " points");
+
+                return jsonResult;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[SERIALIZE] EXCEPTION: " + ex.Message);
+                Console.WriteLine("[SERIALIZE] ❌ EXCEPTION: " + ex.Message);
                 Console.WriteLine("[SERIALIZE] Stack: " + ex.StackTrace);
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine("[SERIALIZE] Inner exception: " + ex.InnerException.Message);
+                }
                 return null;
             }
         }
@@ -157,25 +262,47 @@ namespace KinectServer
         {
             if (frame == null || mapper == null) return null;
 
-            var points = new List<object>();
-            var depthPixels = new short[frame.PixelDataLength];
-            frame.CopyPixelDataTo(depthPixels);
-
-            for (int i = 0; i < depthPixels.Length; i++)
+            try
             {
-                var depth = depthPixels[i] >> 3;
-                if (depth > 400 && depth < 10000)
+                var depthPixels = new short[frame.PixelDataLength];
+                frame.CopyPixelDataTo(depthPixels);
+
+                var result = new StringBuilder();
+                result.Append("[");
+
+                bool first = true;
+                for (int i = 0; i < depthPixels.Length; i++)
                 {
-                    var point = mapper.MapDepthPointToSkeletonPoint(frame.Format, new DepthImagePoint()
+                    var depth = depthPixels[i] >> 3;
+                    if (depth > 400 && depth < 10000)
                     {
-                        X = i % frame.Width,
-                        Y = i / frame.Width,
-                        Depth = depthPixels[i]
-                    });
-                    points.Add(new { x = point.X, y = point.Y, z = point.Z });
+                        var point = mapper.MapDepthPointToSkeletonPoint(frame.Format, new DepthImagePoint()
+                        {
+                            X = i % frame.Width,
+                            Y = i / frame.Width,
+                            Depth = depthPixels[i]
+                        });
+
+                        if (!first) result.Append(",");
+                        first = false;
+
+                        result.Append("{");
+                        result.AppendFormat("\"x\":{0},\"y\":{1},\"z\":{2}",
+                            point.X.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                            point.Y.ToString("F6", System.Globalization.CultureInfo.InvariantCulture),
+                            point.Z.ToString("F6", System.Globalization.CultureInfo.InvariantCulture));
+                        result.Append("}");
+                    }
                 }
+
+                result.Append("]");
+                return result.ToString();
             }
-            return ToJson(points);
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SERIALIZE] ❌ Exception in SerializeRawDepth: " + ex.Message);
+                return null;
+            }
         }
 
         public static string ToJson(object obj)
