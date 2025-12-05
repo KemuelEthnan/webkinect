@@ -354,7 +354,7 @@
 
                         <div class="controls">
                             <button id="startScanBtn" onclick="startScan()" disabled>Reset & Start Capture</button>
-                            <button id="stopScanBtn" onclick="stopScan()" disabled>Stop Capture</button>
+                            <button id="stopScanBtn" onclick="stopCapture()" disabled>Stop Capture</button>
                             <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
                             <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
                             <button id="clearBtn" onclick="clearScan()" disabled>Clear</button>
@@ -966,6 +966,7 @@
                 const now = Date.now();
                 if (now - lastRenderTime >= renderThrottle) {
                     updatePointCloudDisplay();
+                    centerModel(); // Auto-center model after each update
                     lastRenderTime = now;
                 }
                 updateStats();
@@ -1194,10 +1195,14 @@
                 'Capture stopped - ' + pointCloud.length.toLocaleString() + ' points collected' :
                 'Capture stopped - No data';
 
-            // Enable generate mesh if we have points
+            // Enable buttons if we have points
             if (pointCloud.length > 0) {
                 document.getElementById('generateMeshBtn').disabled = false;
+                document.getElementById('exportSTLBtn').disabled = false; // Enable export even without mesh
                 console.log('✅ Capture stopped. Total: ' + pointCloud.length.toLocaleString() + ' points from ' + frameCount + ' frames');
+
+                // Auto-center the point cloud
+                centerModel();
             }
         }
 
@@ -1288,53 +1293,93 @@
                 alert('Tidak ada point cloud untuk di-generate mesh! Silakan lakukan scanning terlebih dahulu.');
                 return;
             }
-            
+
             if (pointCloud.length < 3) {
                 alert('Point cloud terlalu sedikit! Minimal 3 points diperlukan untuk membuat mesh.');
                 return;
             }
-            
-            console.log('🔧 Generating mesh from', pointCloud.length, 'points...');
+
+            console.log('🔧 Generating mesh from', pointCloud.length.toLocaleString(), 'points...');
+
+            // CRITICAL: Downsample if too many points (prevent freeze)
+            let meshPoints = pointCloud;
+            const maxMeshPoints = 50000; // Max 50k points for mesh generation
+
+            if (pointCloud.length > maxMeshPoints) {
+                console.log('⚠️ Too many points (' + pointCloud.length.toLocaleString() + ') - downsampling to ' + maxMeshPoints.toLocaleString());
+                const skipFactor = Math.ceil(pointCloud.length / maxMeshPoints);
+                meshPoints = [];
+                for (let i = 0; i < pointCloud.length; i += skipFactor) {
+                    meshPoints.push(pointCloud[i]);
+                }
+                console.log('✅ Downsampled to ' + meshPoints.length.toLocaleString() + ' points');
+
+                alert('Point cloud terlalu besar (' + pointCloud.length.toLocaleString() + ' points).\n' +
+                      'Akan di-downsample ke ' + meshPoints.length.toLocaleString() + ' points untuk mesh generation.\n\n' +
+                      'Ini normal dan akan menghasilkan mesh yang bagus.');
+            }
+
             document.getElementById('generateMeshBtn').disabled = true;
-            document.getElementById('generateMeshBtn').textContent = 'Generating...';
-            
-            // Use requestAnimationFrame to prevent UI blocking
-            requestAnimationFrame(() => {
+            document.getElementById('generateMeshBtn').textContent = 'Generating... (' + meshPoints.length.toLocaleString() + ' pts)';
+            document.getElementById('scanStatus').textContent = 'Generating mesh from ' + meshPoints.length.toLocaleString() + ' points...';
+
+            // Use setTimeout to prevent UI blocking (give browser time to update UI first)
+            setTimeout(() => {
                 try {
-                    mesh = createMeshFromPointCloud(pointCloud);
-                    
+                    console.log('🔧 Starting mesh creation...');
+                    const startTime = Date.now();
+
+                    mesh = createMeshFromPointCloud(meshPoints);
+
+                    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                    console.log('✅ Mesh generation completed in ' + elapsedTime + ' seconds');
+
                     const oldMesh = scene.getObjectByName('mesh');
                     if (oldMesh) {
                         scene.remove(oldMesh);
                     }
-                    
+
                     // Also hide point cloud when showing mesh
                     const oldPointCloud = scene.getObjectByName('pointCloud');
                     if (oldPointCloud) {
                         oldPointCloud.visible = false;
                     }
-                    
+
                     if (mesh) {
                         mesh.name = 'mesh';
                         scene.add(mesh);
-                        console.log('✅ Mesh generated successfully');
+                        console.log('✅ Mesh added to scene successfully');
+
+                        // Auto-center the mesh
+                        centerModel();
+
+                        // Update UI
+                        document.getElementById('scanStatus').textContent = 'Mesh generated successfully in ' + elapsedTime + 's';
+                        document.getElementById('exportSTLBtn').disabled = false;
+
+                        alert('✅ Mesh berhasil dibuat!\n\n' +
+                              'Points: ' + meshPoints.length.toLocaleString() + '\n' +
+                              'Time: ' + elapsedTime + ' seconds\n\n' +
+                              'Anda bisa Export STL sekarang.');
                     } else {
                         console.error('❌ Failed to generate mesh');
+                        document.getElementById('scanStatus').textContent = 'Failed to generate mesh';
                         alert('Gagal membuat mesh. Coba sesuaikan Mesh Resolution atau scan ulang dengan lebih banyak points.');
                     }
-                    
+
                     document.getElementById('generateMeshBtn').disabled = false;
                     document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
-                    document.getElementById('exportSTLBtn').disabled = mesh !== null;
                 } catch (error) {
                     console.error('❌ Error generating mesh:', error);
-                    alert('Error saat membuat mesh: ' + error.message);
+                    console.error('Stack trace:', error.stack);
+                    alert('Error saat membuat mesh: ' + error.message + '\n\nCek console (F12) untuk detail.');
                     document.getElementById('generateMeshBtn').disabled = false;
                     document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                    document.getElementById('scanStatus').textContent = 'Error generating mesh';
                 }
-            });
+            }, 100); // 100ms delay to let UI update first
         }
-        
+
         function createMeshFromPointCloud(points) {
             if (points.length < 3) {
                 alert('Tidak cukup points untuk membuat mesh!');
@@ -1372,40 +1417,118 @@
         }
         
         function createTriangulation(points) {
+            console.log('🔧 Creating triangulation for ' + points.length.toLocaleString() + ' points...');
+
+            // SIMPLIFIED: Use fast grid-based triangulation instead of complex ICP/spatial hash
+            // This is much faster and won't freeze the browser
+
             const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
-            
-            // Use improved mesh reconstruction from processor
-            const meshData = pointCloudProcessor.createImprovedMesh(points, resolution);
-            
-            if (meshData.faces.length === 0) {
-                // Fallback to simple triangulation
-                const indices = [];
-                for (let i = 0; i < Math.min(points.length - 2, 1000); i += 3) {
+            const indices = [];
+
+            console.log('🔧 Using fast grid-based triangulation (resolution: ' + resolution + ')...');
+
+            // Group points into grid cells
+            const gridSize = resolution;
+            const grid = new Map();
+
+            // Build grid
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                const gx = Math.floor(p.x / gridSize);
+                const gy = Math.floor(p.y / gridSize);
+                const gz = Math.floor(p.z / gridSize);
+                const key = `${gx},${gy},${gz}`;
+
+                if (!grid.has(key)) {
+                    grid.set(key, []);
+                }
+                grid.get(key).push(i);
+            }
+
+            console.log('✅ Grid created with ' + grid.size + ' cells');
+
+            // Create triangles within and between grid cells
+            let triangleCount = 0;
+            const maxTriangles = 100000; // Limit triangles to prevent freeze
+
+            grid.forEach((cellPoints, key) => {
+                if (triangleCount >= maxTriangles) return;
+
+                // Connect points within the same cell
+                for (let i = 0; i < cellPoints.length - 2 && triangleCount < maxTriangles; i++) {
+                    for (let j = i + 1; j < cellPoints.length - 1 && triangleCount < maxTriangles; j++) {
+                        for (let k = j + 1; k < cellPoints.length && triangleCount < maxTriangles; k++) {
+                            const p1 = points[cellPoints[i]];
+                            const p2 = points[cellPoints[j]];
+                            const p3 = points[cellPoints[k]];
+
+                            // Check if triangle is valid (not too flat)
+                            const d12 = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+                            const d23 = Math.hypot(p3.x - p2.x, p3.y - p2.y, p3.z - p2.z);
+                            const d31 = Math.hypot(p1.x - p3.x, p1.y - p3.y, p1.z - p3.z);
+
+                            // Only create triangle if edges are reasonable length
+                            if (d12 > 0.001 && d23 > 0.001 && d31 > 0.001 &&
+                                d12 < gridSize * 2 && d23 < gridSize * 2 && d31 < gridSize * 2) {
+                                indices.push(cellPoints[i], cellPoints[j], cellPoints[k]);
+                                triangleCount++;
+                            }
+                        }
+                    }
+                }
+            });
+
+            console.log('✅ Created ' + triangleCount.toLocaleString() + ' triangles');
+
+            if (indices.length === 0) {
+                console.warn('⚠️ No triangles created - using fallback');
+                // Fallback: simple sequential triangulation
+                for (let i = 0; i < Math.min(points.length - 2, 10000); i += 3) {
                     if (i + 2 < points.length) {
                         indices.push(i, i + 1, i + 2);
                     }
                 }
-                return new Uint32Array(indices);
             }
-            
-            // Convert faces to flat index array
-            const indices = [];
-            for (const face of meshData.faces) {
-                indices.push(face[0], face[1], face[2]);
-            }
-            
+
             return new Uint32Array(indices);
         }
         
         function exportSTL() {
-            if (!mesh || !mesh.geometry) {
-                alert('Tidak ada mesh untuk di-export! Generate mesh terlebih dahulu.');
+            console.log('💾 Exporting STL file...');
+
+            let geometryToExport = null;
+            let exportSource = '';
+
+            // Check if we have mesh, otherwise create temporary mesh from point cloud
+            if (mesh && mesh.geometry) {
+                geometryToExport = mesh.geometry;
+                exportSource = 'mesh';
+                console.log('📦 Exporting from existing mesh');
+            } else if (pointCloud.length > 0) {
+                console.log('📦 No mesh found - creating temporary mesh from point cloud for export...');
+                exportSource = 'pointcloud';
+
+                // Create temporary simple mesh from point cloud
+                const tempMesh = createSimpleMeshForExport(pointCloud);
+                if (tempMesh && tempMesh.geometry) {
+                    geometryToExport = tempMesh.geometry;
+                    console.log('✅ Temporary mesh created for export');
+                } else {
+                    alert('Gagal membuat mesh untuk export. Coba generate mesh terlebih dahulu.');
+                    return;
+                }
+            } else {
+                alert('Tidak ada data untuk di-export! Lakukan scanning terlebih dahulu.');
                 return;
             }
-            
-            console.log('💾 Exporting STL file...');
+
+            if (!geometryToExport) {
+                alert('Gagal mengakses geometry untuk export.');
+                return;
+            }
+
             try {
-                const stlString = convertToSTL(mesh.geometry);
+                const stlString = convertToSTL(geometryToExport);
                 const blob = new Blob([stlString], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
