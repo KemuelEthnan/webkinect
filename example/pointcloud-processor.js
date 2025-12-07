@@ -484,13 +484,15 @@ class PointCloudProcessor {
     }
 
     /**
-     * Improved mesh reconstruction using Delaunay-like triangulation
-     * Creates better mesh from point cloud
+     * Improved mesh reconstruction using better triangulation
+     * Creates solid, connected mesh from point cloud with hole filling and consolidation
      */
     createImprovedMesh(points, resolution = 0.05) {
         if (points.length < 3) return { vertices: [], faces: [] };
 
-        // Build spatial hash for faster neighbor lookup
+        console.log('🔧 Creating improved mesh with', points.length, 'points, resolution:', resolution);
+
+        // Step 1: Build spatial hash for faster neighbor lookup
         const grid = new Map();
         const gridSize = resolution;
 
@@ -507,9 +509,15 @@ class PointCloudProcessor {
         });
 
         const faces = [];
-        const maxDist = resolution * 1.5;
+        const faceSet = new Set(); // Use Set for faster duplicate checking
+        const maxDist = resolution * 2.5; // Further increased for better connectivity
+        const edgeMap = new Map(); // Track edges for connectivity
 
-        // For each point, find neighbors and create triangles
+        // Step 2: Create initial mesh with better connectivity using improved algorithm
+        // Use ball pivoting approach: for each edge, find best third point
+        const processedEdges = new Set();
+        
+        // First pass: create initial triangles from nearest neighbors
         for (let i = 0; i < points.length; i++) {
             const point = points[i];
             const gx = Math.floor(point.x / gridSize);
@@ -518,10 +526,10 @@ class PointCloudProcessor {
 
             const neighbors = [];
             
-            // Check neighboring grid cells
-            for (let dx = -1; dx <= 1; dx++) {
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dz = -1; dz <= 1; dz++) {
+            // Check neighboring grid cells (extended range for better connectivity)
+            for (let dx = -2; dx <= 2; dx++) {
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dz = -2; dz <= 2; dz++) {
                         const key = `${gx + dx},${gy + dy},${gz + dz}`;
                         const cellPoints = grid.get(key) || [];
                         
@@ -539,33 +547,473 @@ class PointCloudProcessor {
             // Sort neighbors by distance
             neighbors.sort((a, b) => a.dist - b.dist);
 
-            // Create triangles with nearest neighbors
-            for (let j = 0; j < Math.min(neighbors.length, 10); j++) {
-                for (let k = j + 1; k < Math.min(neighbors.length, 10); k++) {
+            // Create triangles with nearest neighbors (increased count for better coverage)
+            const maxNeighbors = Math.min(neighbors.length, 20); // Further increased
+            for (let j = 0; j < maxNeighbors; j++) {
+                for (let k = j + 1; k < maxNeighbors; k++) {
                     const jIdx = neighbors[j].idx;
                     const kIdx = neighbors[k].idx;
 
                     // Check if triangle is valid (not too flat)
-                    const v1 = { x: points[jIdx].x - point.x, y: points[jIdx].y - point.y, z: points[jIdx].z - point.z };
-                    const v2 = { x: points[kIdx].x - point.x, y: points[kIdx].y - point.y, z: points[kIdx].z - point.z };
+                    const v1 = { 
+                        x: points[jIdx].x - point.x, 
+                        y: points[jIdx].y - point.y, 
+                        z: points[jIdx].z - point.z 
+                    };
+                    const v2 = { 
+                        x: points[kIdx].x - point.x, 
+                        y: points[kIdx].y - point.y, 
+                        z: points[kIdx].z - point.z 
+                    };
                     const normal = this.crossProduct(v1, v2);
                     const area = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
 
-                    if (area > 0.0001) { // Avoid degenerate triangles
-                        // Check if triangle already exists (avoid duplicates)
-                        const faceKey = [i, jIdx, kIdx].sort((a, b) => a - b).join(',');
-                        if (!faces.find(f => f.key === faceKey)) {
-                            faces.push({ key: faceKey, indices: [i, jIdx, kIdx] });
+                    // More lenient area check for better coverage
+                    if (area > 0.00001) {
+                        // Create sorted triangle key for duplicate checking
+                        const triIndices = [i, jIdx, kIdx].sort((a, b) => a - b);
+                        const faceKey = triIndices.join(',');
+                        
+                        if (!faceSet.has(faceKey)) {
+                            faceSet.add(faceKey);
+                            faces.push({ key: faceKey, indices: triIndices });
+                            
+                            // Track edges for connectivity
+                            const edges = [
+                                [triIndices[0], triIndices[1]],
+                                [triIndices[1], triIndices[2]],
+                                [triIndices[2], triIndices[0]]
+                            ];
+                            
+                            edges.forEach(edge => {
+                                const edgeKey = edge.sort((a, b) => a - b).join(',');
+                                if (!edgeMap.has(edgeKey)) {
+                                    edgeMap.set(edgeKey, 0);
+                                }
+                                edgeMap.set(edgeKey, edgeMap.get(edgeKey) + 1);
+                                processedEdges.add(edgeKey);
+                            });
                         }
                     }
                 }
             }
         }
 
+        // Second pass: fill gaps by processing boundary edges
+        const boundaryEdges = [];
+        edgeMap.forEach((count, edgeKey) => {
+            if (count === 1) {
+                const [i1, i2] = edgeKey.split(',').map(Number);
+                boundaryEdges.push([i1, i2]);
+            }
+        });
+
+        // Process boundary edges to create additional triangles
+        for (const [i1, i2] of boundaryEdges.slice(0, Math.min(boundaryEdges.length, 5000))) { // Limit for performance
+            const p1 = points[i1];
+            const p2 = points[i2];
+            const gx1 = Math.floor(p1.x / gridSize);
+            const gy1 = Math.floor(p1.y / gridSize);
+            const gz1 = Math.floor(p1.z / gridSize);
+            
+            let bestPoint = -1;
+            let bestScore = Infinity;
+            
+            // Search for best third point
+            for (let dx = -3; dx <= 3; dx++) {
+                for (let dy = -3; dy <= 3; dy++) {
+                    for (let dz = -3; dz <= 3; dz++) {
+                        const key = `${gx1 + dx},${gy1 + dy},${gz1 + dz}`;
+                        const cellPoints = grid.get(key) || [];
+                        
+                        for (const idx of cellPoints) {
+                            if (idx === i1 || idx === i2) continue;
+                            
+                            const p3 = points[idx];
+                            const dist1 = this.distance(p1, p3);
+                            const dist2 = this.distance(p2, p3);
+                            const dist12 = this.distance(p1, p2);
+                            
+                            if (dist1 <= maxDist && dist2 <= maxDist) {
+                                // Calculate triangle quality
+                                const v1 = { x: p2.x - p1.x, y: p2.y - p1.y, z: p2.z - p1.z };
+                                const v2 = { x: p3.x - p1.x, y: p3.y - p1.y, z: p3.z - p1.z };
+                                const normal = this.crossProduct(v1, v2);
+                                const area = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+                                
+                                if (area > 0.00001) {
+                                    // Prefer triangles with similar edge lengths
+                                    const avgDist = (dist1 + dist2 + dist12) / 3;
+                                    const variance = (
+                                        Math.pow(dist1 - avgDist, 2) +
+                                        Math.pow(dist2 - avgDist, 2) +
+                                        Math.pow(dist12 - avgDist, 2)
+                                    ) / 3;
+                                    
+                                    const score = variance / (area + 0.0001); // Lower is better
+                                    if (score < bestScore) {
+                                        bestScore = score;
+                                        bestPoint = idx;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Create triangle if good candidate found
+            if (bestPoint !== -1) {
+                const triIndices = [i1, i2, bestPoint].sort((a, b) => a - b);
+                const faceKey = triIndices.join(',');
+                
+                if (!faceSet.has(faceKey)) {
+                    faceSet.add(faceKey);
+                    faces.push({ key: faceKey, indices: triIndices });
+                    
+                    // Update edge map
+                    const edges = [
+                        [triIndices[0], triIndices[1]],
+                        [triIndices[1], triIndices[2]],
+                        [triIndices[2], triIndices[0]]
+                    ];
+                    
+                    edges.forEach(edge => {
+                        const edgeKey = edge.sort((a, b) => a - b).join(',');
+                        if (!edgeMap.has(edgeKey)) {
+                            edgeMap.set(edgeKey, 0);
+                        }
+                        edgeMap.set(edgeKey, edgeMap.get(edgeKey) + 1);
+                    });
+                }
+            }
+        }
+
+        console.log('✅ Created', faces.length, 'triangles from', points.length, 'points');
+
+        // Step 3: Fill holes by connecting boundary edges
+        let filledFaces = this.fillHoles(points, faces, edgeMap, grid, gridSize, maxDist);
+        console.log('✅ After hole filling:', filledFaces.length, 'triangles');
+
+        // Step 4: Rebuild edgeMap after hole filling for consolidation
+        const updatedEdgeMap = new Map();
+        filledFaces.forEach(face => {
+            const indices = face.indices || face;
+            const edges = [
+                [indices[0], indices[1]],
+                [indices[1], indices[2]],
+                [indices[2], indices[0]]
+            ];
+            edges.forEach(edge => {
+                const edgeKey = edge.sort((a, b) => a - b).join(',');
+                if (!updatedEdgeMap.has(edgeKey)) {
+                    updatedEdgeMap.set(edgeKey, 0);
+                }
+                updatedEdgeMap.set(edgeKey, updatedEdgeMap.get(edgeKey) + 1);
+            });
+        });
+
+        // Step 5: Consolidate mesh - connect disconnected components
+        filledFaces = this.consolidateMesh(points, filledFaces, grid, gridSize, maxDist, updatedEdgeMap);
+        console.log('✅ After consolidation:', filledFaces.length, 'triangles');
+
         return {
             vertices: points.map(p => [p.x, p.y, p.z]),
-            faces: faces.map(f => f.indices)
+            faces: filledFaces.map(f => f.indices || f)
         };
+    }
+
+    /**
+     * Fill holes in mesh by connecting boundary edges
+     */
+    fillHoles(points, faces, edgeMap, grid, gridSize, maxDist) {
+        // Find boundary edges (edges that appear only once)
+        const boundaryEdges = [];
+        edgeMap.forEach((count, edgeKey) => {
+            if (count === 1) {
+                const [i1, i2] = edgeKey.split(',').map(Number);
+                boundaryEdges.push([i1, i2]);
+            }
+        });
+
+        if (boundaryEdges.length === 0) {
+            console.log('✅ No holes detected, mesh is watertight');
+            return faces;
+        }
+
+        console.log('🔧 Filling', boundaryEdges.length, 'boundary edges (holes)');
+
+        const newFaces = [...faces];
+        const faceSet = new Set(faces.map(f => f.key || [f.indices[0], f.indices[1], f.indices[2]].sort((a, b) => a - b).join(',')));
+
+        // For each boundary edge, try to find a third point to form a triangle
+        for (const [i1, i2] of boundaryEdges) {
+            const p1 = points[i1];
+            const p2 = points[i2];
+            
+            // Find nearby points that could close the hole
+            const gx1 = Math.floor(p1.x / gridSize);
+            const gy1 = Math.floor(p1.y / gridSize);
+            const gz1 = Math.floor(p1.z / gridSize);
+            
+            const gx2 = Math.floor(p2.x / gridSize);
+            const gy2 = Math.floor(p2.y / gridSize);
+            const gz2 = Math.floor(p2.z / gridSize);
+            
+            let bestPoint = -1;
+            let bestScore = Infinity;
+            
+            // Search in extended cells between the two edge points
+            const minGx = Math.min(gx1, gx2) - 2;
+            const maxGx = Math.max(gx1, gx2) + 2;
+            const minGy = Math.min(gy1, gy2) - 2;
+            const maxGy = Math.max(gy1, gy2) + 2;
+            const minGz = Math.min(gz1, gz2) - 2;
+            const maxGz = Math.max(gz1, gz2) + 2;
+            
+            for (let gx = minGx; gx <= maxGx; gx++) {
+                for (let gy = minGy; gy <= maxGy; gy++) {
+                    for (let gz = minGz; gz <= maxGz; gz++) {
+                        const key = `${gx},${gy},${gz}`;
+                        const cellPoints = grid.get(key) || [];
+                        
+                        for (const idx of cellPoints) {
+                            if (idx === i1 || idx === i2) continue;
+                            
+                            const p3 = points[idx];
+                            const dist1 = this.distance(p1, p3);
+                            const dist2 = this.distance(p2, p3);
+                            const dist12 = this.distance(p1, p2);
+                            
+                            // More lenient check for better hole filling
+                            if (dist1 <= maxDist * 1.5 && dist2 <= maxDist * 1.5 && dist1 + dist2 < dist12 * 3.0) {
+                                // Calculate triangle quality (prefer equilateral triangles)
+                                const avgDist = (dist1 + dist2 + dist12) / 3;
+                                const variance = (
+                                    Math.pow(dist1 - avgDist, 2) +
+                                    Math.pow(dist2 - avgDist, 2) +
+                                    Math.pow(dist12 - avgDist, 2)
+                                ) / 3;
+                                
+                                if (variance < bestScore) {
+                                    bestScore = variance;
+                                    bestPoint = idx;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Create triangle to fill hole
+            if (bestPoint !== -1) {
+                const triIndices = [i1, i2, bestPoint].sort((a, b) => a - b);
+                const faceKey = triIndices.join(',');
+                
+                if (!faceSet.has(faceKey)) {
+                    faceSet.add(faceKey);
+                    newFaces.push({ key: faceKey, indices: triIndices });
+                }
+            }
+        }
+
+        return newFaces;
+    }
+
+    /**
+     * Consolidate mesh by connecting disconnected components
+     * This helps merge fragmented parts into a single solid mesh
+     */
+    consolidateMesh(points, faces, grid, gridSize, maxDist, edgeMap = null) {
+        console.log('🔧 Consolidating mesh to connect fragmented parts...');
+        
+        // Build connectivity graph from faces
+        const vertexConnections = new Map();
+        faces.forEach(face => {
+            const indices = face.indices || face;
+            if (!indices || indices.length !== 3) return;
+            const [i1, i2, i3] = indices;
+            
+            // Add connections
+            [i1, i2, i3].forEach((v, idx) => {
+                if (!vertexConnections.has(v)) {
+                    vertexConnections.set(v, new Set());
+                }
+                const others = [i1, i2, i3].filter((_, i) => i !== idx);
+                others.forEach(other => {
+                    vertexConnections.get(v).add(other);
+                });
+            });
+        });
+
+        // Find connected components using BFS (only check vertices that are in faces)
+        const visited = new Set();
+        const components = [];
+        const verticesInFaces = new Set();
+        
+        faces.forEach(face => {
+            const indices = face.indices || face;
+            if (indices && indices.length === 3) {
+                indices.forEach(v => verticesInFaces.add(v));
+            }
+        });
+        
+        for (const v of verticesInFaces) {
+            if (visited.has(v)) continue;
+            
+            const component = [];
+            const queue = [v];
+            visited.add(v);
+            
+            while (queue.length > 0) {
+                const currentV = queue.shift();
+                component.push(currentV);
+                
+                const neighbors = vertexConnections.get(currentV) || new Set();
+                neighbors.forEach(n => {
+                    if (!visited.has(n)) {
+                        visited.add(n);
+                        queue.push(n);
+                    }
+                });
+            }
+            
+            if (component.length > 0) {
+                components.push(component);
+            }
+        }
+
+        console.log('📊 Found', components.length, 'connected components');
+
+        // If only one component, mesh is already consolidated
+        if (components.length <= 1) {
+            console.log('✅ Mesh is already consolidated');
+            return faces;
+        }
+
+        // Sort components by size (largest first)
+        components.sort((a, b) => b.length - a.length);
+        const mainComponent = components[0];
+        const otherComponents = components.slice(1);
+
+        console.log('🔗 Connecting', otherComponents.length, 'fragmented components to main component...');
+        console.log('📊 Main component size:', mainComponent.length, 'vertices');
+        otherComponents.forEach((comp, idx) => {
+            console.log('📊 Component', idx + 1, 'size:', comp.length, 'vertices');
+        });
+
+        const newFaces = [...faces];
+        const faceSet = new Set(faces.map(f => {
+            const indices = f.indices || f;
+            return f.key || indices.sort((a, b) => a - b).join(',');
+        }));
+
+        // Connect each fragmented component to the main component
+        let bridgesCreated = 0;
+        otherComponents.forEach((component, compIdx) => {
+            // Find closest points between this component and main component
+            let minDist = Infinity;
+            let closestMain = -1;
+            let closestComp = -1;
+
+            // Sample points for performance (check every 10th point)
+            const sampleSize = Math.min(50, component.length);
+            const step = Math.max(1, Math.floor(component.length / sampleSize));
+            const sampledComponent = [];
+            for (let i = 0; i < component.length; i += step) {
+                sampledComponent.push(component[i]);
+            }
+
+            const sampleMainSize = Math.min(100, mainComponent.length);
+            const stepMain = Math.max(1, Math.floor(mainComponent.length / sampleMainSize));
+            const sampledMain = [];
+            for (let i = 0; i < mainComponent.length; i += stepMain) {
+                sampledMain.push(mainComponent[i]);
+            }
+
+            sampledComponent.forEach(compV => {
+                sampledMain.forEach(mainV => {
+                    const dist = this.distance(points[compV], points[mainV]);
+                    if (dist < minDist && dist <= maxDist * 4) { // Extended range for consolidation
+                        minDist = dist;
+                        closestMain = mainV;
+                        closestComp = compV;
+                    }
+                });
+            });
+
+            // If found close points, create bridge triangles
+            if (closestMain !== -1 && closestComp !== -1 && minDist <= maxDist * 4) {
+                const p1 = points[closestMain];
+                const p2 = points[closestComp];
+                
+                // Find intermediate points to create smooth bridge
+                const bridgePoints = [];
+                const numBridgePoints = Math.min(3, Math.ceil(minDist / (maxDist * 0.5)));
+                
+                for (let b = 1; b <= numBridgePoints; b++) {
+                    const t = b / (numBridgePoints + 1);
+                    const bridgeX = p1.x + (p2.x - p1.x) * t;
+                    const bridgeY = p1.y + (p2.y - p1.y) * t;
+                    const bridgeZ = p1.z + (p2.z - p1.z) * t;
+                    
+                    // Find nearest actual point to this bridge position
+                    const gx = Math.floor(bridgeX / gridSize);
+                    const gy = Math.floor(bridgeY / gridSize);
+                    const gz = Math.floor(bridgeZ / gridSize);
+                    
+                    let nearestPoint = -1;
+                    let nearestDist = Infinity;
+                    
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                const key = `${gx + dx},${gy + dy},${gz + dz}`;
+                                const cellPoints = grid.get(key) || [];
+                                
+                                cellPoints.forEach(idx => {
+                                    if (idx === closestMain || idx === closestComp) return;
+                                    const p3 = points[idx];
+                                    const dist = Math.hypot(
+                                        p3.x - bridgeX,
+                                        p3.y - bridgeY,
+                                        p3.z - bridgeZ
+                                    );
+                                    if (dist < nearestDist && dist <= maxDist * 1.5) {
+                                        nearestDist = dist;
+                                        nearestPoint = idx;
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (nearestPoint !== -1) {
+                        bridgePoints.push(nearestPoint);
+                    }
+                }
+                
+                // Create bridge triangles connecting the components
+                const allBridgePoints = [closestMain, ...bridgePoints, closestComp];
+                for (let i = 0; i < allBridgePoints.length - 2; i++) {
+                    const tri = [
+                        allBridgePoints[i],
+                        allBridgePoints[i + 1],
+                        allBridgePoints[i + 2]
+                    ].sort((a, b) => a - b);
+                    
+                    const faceKey = tri.join(',');
+                    if (!faceSet.has(faceKey)) {
+                        faceSet.add(faceKey);
+                        newFaces.push({ key: faceKey, indices: tri });
+                        bridgesCreated++;
+                    }
+                }
+            }
+        });
+
+        console.log('✅ Mesh consolidation complete. Created', bridgesCreated, 'bridge triangles');
+        return newFaces;
     }
 
     /**

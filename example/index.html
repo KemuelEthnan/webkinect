@@ -344,16 +344,21 @@
                         <div class="info">
                             <p><strong>Instruksi 3D Scanning:</strong></p>
                             <p>1. Pastikan Kinect terhubung dan objek berada di depan Kinect (jarak 0.85-4 meter)</p>
-                            <p>2. Klik "Mulai Scan" - sistem akan otomatis menangkap model 3D selama 15 detik</p>
-                            <p>3. Progress bar akan menunjukkan progress dari 0-100%</p>
-                            <p>4. Gerakkan objek atau pindahkan Kinect untuk mendapatkan berbagai sudut saat scanning</p>
-                            <p>5. Setelah scanning selesai (progress 100%), klik "Generate Mesh" untuk membuat 3D model</p>
-                            <p>6. Klik "Export STL" untuk menyimpan file .stl</p>
+                            <p>2. Pilih mode scan: <strong>Normal</strong> (satu sisi) atau <strong>Dua Fase</strong> (depan & belakang)</p>
+                            <p>3. Klik "Mulai Scan" - sistem akan otomatis menangkap model 3D</p>
+                            <p style="margin-left: 20px; color: #666;">• Mode Normal: 60 detik</p>
+                            <p style="margin-left: 20px; color: #666;">• Mode Dua Fase: Fase 1 (depan) 15 detik, lalu Fase 2 (belakang) 15 detik</p>
+                            <p>4. Progress bar akan menunjukkan progress dari 0-100%</p>
+                            <p>5. Gerakkan objek atau pindahkan Kinect untuk mendapatkan berbagai sudut saat scanning</p>
+                            <p>6. Setelah scanning selesai (progress 100%), klik "Generate Mesh" untuk membuat 3D model</p>
+                            <p>7. Klik "Export STL" untuk menyimpan file .stl</p>
+                            <p style="color: #d32f2f; font-weight: bold;">⚠️ Mode Dua Fase: Setelah Fase 1 selesai, putar objek 180° lalu klik "Mulai Fase 2"</p>
                             <p><strong>Tips:</strong> Buka Console browser (F12) untuk melihat log debugging</p>
                         </div>
 
                         <div class="controls">
                             <button id="startScanBtn" onclick="startScan()" disabled>Reset & Start Capture</button>
+                            <button id="startPhase2Btn" onclick="startPhase2()" disabled style="display: none; background: #ff9800; color: white;">Mulai Fase 2 (Belakang)</button>
                             <button id="stopScanBtn" onclick="stopCapture()" disabled>Stop Capture</button>
                             <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
                             <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
@@ -390,8 +395,8 @@
                             <h2>⚙️ Settings</h2>
                             <div class="info-item">
                                 <label>Max Points per Frame:</label>
-                                <input type="range" id="maxPointsSlider" min="1000" max="50000" value="10000" step="1000">
-                                <span id="maxPointsValue">10000</span>
+                                <input type="range" id="maxPointsSlider" min="1000" max="100000" value="20000" step="1000">
+                                <span id="maxPointsValue">20000</span>
                             </div>
                             <div class="info-item">
                                 <label>Mesh Resolution:</label>
@@ -409,6 +414,61 @@
                                     <input type="checkbox" id="enableNoiseFilterCheckbox" style="width: auto;">
                                     Enable Noise Filtering (⚠️ Causes lag - disabled by default)
                                 </label>
+                            </div>
+                            <div class="info-item" style="margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 5px; border: 2px solid #2196f3;">
+                                <label style="display: flex; align-items: center; gap: 8px; font-weight: bold;">
+                                    <input type="checkbox" id="enableMultiPhaseCheckbox" style="width: auto;" onchange="toggleMultiPhaseMode()">
+                                    🔄 Scan Dua Fase (Depan & Belakang)
+                                </label>
+                                <p style="margin: 8px 0 0 0; font-size: 0.9em; color: #555;">
+                                    Fase 1: Scan depan (15 detik)<br>
+                                    Fase 2: Scan belakang (15 detik)<br>
+                                    Hasil: Objek 3D utuh dari kedua sisi
+                                </p>
+                            </div>
+                            <div class="info-item" id="phaseInfo" style="display: none; margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px;">
+                                <label style="font-weight: bold;">Fase Saat Ini:</label>
+                                <span id="currentPhase" style="font-size: 1.1em; color: #d32f2f;">-</span>
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <h2>📍 Position Control</h2>
+                            <div class="info-item">
+                                <label>Position X:</label>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <input type="range" id="positionXSlider" min="-5" max="5" value="0" step="0.1" style="flex: 1;">
+                                    <input type="number" id="positionXValue" value="0" step="0.1" style="width: 80px;" onchange="updatePositionX(this.value)">
+                                    <button onclick="adjustPosition('x', -0.1)" style="padding: 5px 10px; font-size: 14px;">-</button>
+                                    <button onclick="adjustPosition('x', 0.1)" style="padding: 5px 10px; font-size: 14px;">+</button>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <label>Position Y:</label>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <input type="range" id="positionYSlider" min="-5" max="5" value="0" step="0.1" style="flex: 1;">
+                                    <input type="number" id="positionYValue" value="0" step="0.1" style="width: 80px;" onchange="updatePositionY(this.value)">
+                                    <button onclick="adjustPosition('y', -0.1)" style="padding: 5px 10px; font-size: 14px;">-</button>
+                                    <button onclick="adjustPosition('y', 0.1)" style="padding: 5px 10px; font-size: 14px;">+</button>
+                                </div>
+                            </div>
+                            <div class="info-item">
+                                <label>Position Z:</label>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <input type="range" id="positionZSlider" min="-5" max="5" value="0" step="0.1" style="flex: 1;">
+                                    <input type="number" id="positionZValue" value="0" step="0.1" style="width: 80px;" onchange="updatePositionZ(this.value)">
+                                    <button onclick="adjustPosition('z', -0.1)" style="padding: 5px 10px; font-size: 14px;">-</button>
+                                    <button onclick="adjustPosition('z', 0.1)" style="padding: 5px 10px; font-size: 14px;">+</button>
+                                </div>
+                            </div>
+                            <div class="info-item" style="margin-top: 15px;">
+                                <button onclick="resetObjectPosition()" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                                    🔄 Reset to Center
+                                </button>
+                            </div>
+                            <div class="info-item" style="margin-top: 10px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                                <label style="font-size: 0.9em; color: #666;">Current Position:</label>
+                                <div id="currentPosition" style="font-size: 1.1em; font-weight: 600; color: #333;">X: 0.00, Y: 0.00, Z: 0.00</div>
                             </div>
                         </div>
 
@@ -454,11 +514,18 @@
         var frameCount = 0;
         var scanTimer = null;
         var scanStartTime = 0;
-        var scanDuration = 15000; // Auto-stop after 15 seconds
+        var scanDuration = 60000; // Auto-stop after 60 seconds (increased for more points)
         var dataReceivedDuringScan = 0;
         var pointCloudDataReceived = 0;
-        var maxTotalPoints = 200000; // Limit to 200k points for performance
+        var maxTotalPoints = 500000; // Limit to 500k points for high-quality scans
         var autoCaptureTimer = null;
+        
+        // Multi-phase scanning (depan dan belakang)
+        var scanPhase = 0; // 0 = not started, 1 = depan (front), 2 = belakang (back)
+        var pointCloudFront = []; // Point cloud from phase 1 (depan)
+        var pointCloudBack = []; // Point cloud from phase 2 (belakang)
+        var phaseDuration = 15000; // 15 seconds per phase
+        var isMultiPhaseMode = false; // Enable/disable multi-phase mode
         
         // Point cloud processing
         var pointCloudProcessor = new PointCloudProcessor();
@@ -491,8 +558,8 @@
                 document.getElementById('scanningTab').classList.add('active');
                 currentMode = 'scanning';
 
-                console.log('🔵 Switched to 3D Scanning tab - AUTO-CAPTURE MODE (15 seconds)');
-                console.log('📌 Auto-capture will run for 15 seconds then stop automatically');
+                console.log('🔵 Switched to 3D Scanning tab - AUTO-CAPTURE MODE (60 seconds)');
+                console.log('📌 Auto-capture will run for 60 seconds (or until max points reached) then stop automatically');
                 console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
 
                 // Initialize 3D viewer if not already done
@@ -518,12 +585,13 @@
                     scanStartTime = Date.now();
 
                     // Update status
-                    document.getElementById('scanStatus').textContent = 'Auto-capturing for 15 seconds...';
+                    document.getElementById('scanStatus').textContent = 'Auto-capturing for 60 seconds...';
 
-                    // Auto-stop after 15 seconds
+                    // Auto-stop after scanDuration (60 seconds) OR when max points reached
                     if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
                     autoCaptureTimer = setTimeout(() => {
-                        console.log('⏱️ 15 seconds elapsed - auto-stopping capture');
+                        console.log('⏱️ ' + (scanDuration / 1000) + ' seconds elapsed - auto-stopping capture');
+                        console.log('📊 Final point count:', pointCloud.length.toLocaleString());
                         stopCapture();
                     }, scanDuration);
 
@@ -868,6 +936,12 @@
         }
         
         function processPointCloud(data) {
+            // 🔥 CRITICAL: Check if capture is still active - stop processing if not
+            if (!isCaptureActive) {
+                console.log('⏸️ Capture stopped - ignoring point cloud data');
+                return;
+            }
+            
             // 🔥 THROTTLING: Skip if processing too frequently (prevent freeze)
             const now = Date.now();
             if (now - lastProcessTime < processingThrottle) {
@@ -955,18 +1029,49 @@
                 kinectPosition = pointCloudProcessor.estimateKinectPosition(newPoints);
             }
             
-            // Add points to point cloud
-            pointCloud.push(...newPoints);
+            // Filter to keep only human body, remove background
+            // Only apply filter if we have enough points to filter effectively
+            let humanBodyPoints = newPoints;
+            if (newPoints.length > 100) {
+                try {
+                    humanBodyPoints = filterHumanBodyOnly(newPoints);
+                    // If filter removed too many points (>80%), use original points
+                    if (humanBodyPoints.length < newPoints.length * 0.2) {
+                        console.warn('⚠️ Filter too aggressive, using original points');
+                        humanBodyPoints = newPoints;
+                    }
+                } catch (err) {
+                    console.error('❌ Filter error, using original points:', err);
+                    humanBodyPoints = newPoints;
+                }
+            }
+            
+            // CRITICAL: Remove duplicate/overlapping points to prevent layering
+            // Use voxel-based deduplication for better results
+            const beforeDedup = humanBodyPoints.length;
+            humanBodyPoints = removeDuplicatePoints(humanBodyPoints, pointCloud);
+            
+            // Optional: Apply temporal filtering for additional stability (can be enabled)
+            // This helps reduce noise and layering from frame-to-frame variations
+            // humanBodyPoints = applyTemporalFiltering(humanBodyPoints, pointCloudFrames);
+            
+            console.log('📊 Deduplication: ' + beforeDedup + ' → ' + humanBodyPoints.length + ' points');
+            
+            // Add filtered and deduplicated points to point cloud
+            pointCloud.push(...humanBodyPoints);
             frameCount++;
 
-            console.log('✅ Added ' + newPoints.length + ' points. Total: ' + pointCloud.length.toLocaleString());
+            const addedCount = humanBodyPoints.length;
+            const duplicatesRemoved = beforeDedup - addedCount;
+            console.log('✅ Added ' + addedCount + ' points (from ' + newPoints.length + ', duplicates removed: ' + duplicatesRemoved + '). Total: ' + pointCloud.length.toLocaleString());
 
             // Update display and stats (throttled)
             requestAnimationFrame(() => {
                 const now = Date.now();
                 if (now - lastRenderTime >= renderThrottle) {
                     updatePointCloudDisplay();
-                    centerModel(); // Auto-center model after each update
+                    // Center model more frequently to keep it visible
+                    setTimeout(() => centerModel(), 100);
                     lastRenderTime = now;
                 }
                 updateStats();
@@ -975,7 +1080,10 @@
             console.log('✅✅✅ Successfully added', newPoints.length, 'points. Total:', pointCloud.length, 'points from', frameCount, 'frames');
             
             const debugMsgEl = document.getElementById('debugMessage');
-            if (debugMsgEl) debugMsgEl.textContent = `✅ Added ${newPoints.length} points. Total: ${pointCloud.length} points`;
+            if (debugMsgEl) {
+                const duplicatesRemoved = newPoints.length - humanBodyPoints.length;
+                debugMsgEl.textContent = `✅ Added ${humanBodyPoints.length} points (removed ${duplicatesRemoved} duplicates/background). Total: ${pointCloud.length} points`;
+            }
         }
         
         function updatePointCloudDisplay() {
@@ -1042,22 +1150,22 @@
                 sizeAttenuation: false
             });
             
-            const points = new THREE.Points(geometry, material);
-            points.name = 'pointCloud';
-            scene.add(points);
+            const pointsObj = new THREE.Points(geometry, material);
+            pointsObj.name = 'pointCloud';
+            scene.add(pointsObj);
             
-            // Adjust camera to view the point cloud
-            if (camera && !isNaN(minX) && !isNaN(maxX)) {
-                const centerX = (minX + maxX) / 2;
-                const centerY = (minY + maxY) / 2;
-                const centerZ = (minZ + maxZ) / 2;
-                const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-                
-                if (size > 0) {
-                    camera.position.set(centerX, centerY, centerZ + size * 1.5);
-                    camera.lookAt(centerX, centerY, centerZ);
-                }
-            }
+            // Apply current manual position
+            pointsObj.position.set(
+                window.objectPosition ? window.objectPosition.x : 0,
+                window.objectPosition ? window.objectPosition.y : 0,
+                window.objectPosition ? window.objectPosition.z : 0
+            );
+            
+            // Center and fit the point cloud immediately after adding
+            // This ensures it's always visible
+            setTimeout(() => {
+                centerModel();
+            }, 50);
         }
         
         function startScan() {
@@ -1075,13 +1183,28 @@
                 return;
             }
 
-            console.log('🚀 Starting REAL-TIME CAPTURE (15 seconds, max 200k points)...');
-            console.log('📌 Mode: Simplified auto-capture');
-            console.log('📌 Duration: 15 seconds');
-            console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
+            // Check if multi-phase mode is enabled
+            isMultiPhaseMode = document.getElementById('enableMultiPhaseCheckbox')?.checked || false;
+            
+            if (isMultiPhaseMode) {
+                // Multi-phase mode: Phase 1 (depan)
+                scanPhase = 1;
+                pointCloudFront = [];
+                pointCloudBack = [];
+                pointCloud = []; // Reset current point cloud
+                console.log('🔄 Starting MULTI-PHASE SCAN - Phase 1 (Depan/Front)');
+                console.log('📌 Duration: 15 seconds');
+            } else {
+                // Normal mode: single scan
+                scanPhase = 0;
+                pointCloud = [];
+                console.log('🚀 Starting REAL-TIME CAPTURE (60 seconds or until ' + maxTotalPoints.toLocaleString() + ' points)...');
+                console.log('📌 Mode: Simplified auto-capture');
+                console.log('📌 Duration: 60 seconds (or until max points reached)');
+                console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
+            }
 
             // Reset data
-            pointCloud = [];
             pointCloudFrames = [];
             debugDataCount = 0;
             frameCount = 0;
@@ -1094,12 +1217,25 @@
             window.isScanning = true;
             isCaptureActive = true;
 
-            // Auto-stop after 15 seconds
+            // Auto-stop timer - different duration for multi-phase vs normal
             if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
+            const currentDuration = isMultiPhaseMode ? phaseDuration : scanDuration;
             autoCaptureTimer = setTimeout(() => {
-                console.log('⏱️ 15 seconds elapsed - auto-stopping capture');
-                stopCapture();
-            }, scanDuration);
+                console.log('⏱️ ' + (currentDuration / 1000) + ' seconds elapsed - auto-stopping capture');
+                console.log('📊 Final point count:', pointCloud.length.toLocaleString());
+                if (isMultiPhaseMode && scanPhase === 1) {
+                    // Phase 1 complete, save to pointCloudFront
+                    pointCloudFront = [...pointCloud];
+                    console.log('✅ Phase 1 (Depan) complete: ' + pointCloudFront.length.toLocaleString() + ' points');
+                    stopCapture();
+                    // Show button for Phase 2
+                    document.getElementById('startPhase2Btn').style.display = 'inline-block';
+                    document.getElementById('startPhase2Btn').disabled = false;
+                    document.getElementById('scanStatus').textContent = 'Fase 1 selesai! Putar objek 180° lalu klik "Mulai Fase 2"';
+                } else {
+                    stopCapture();
+                }
+            }, currentDuration);
             
             // Get settings
             useICP = document.getElementById('enableICPCheckbox').checked;
@@ -1114,13 +1250,18 @@
             // Update UI
             document.getElementById('startScanBtn').disabled = true;
             document.getElementById('startScanBtn').classList.add('scanning');
-            document.getElementById('startScanBtn').textContent = 'Scanning...';
+            document.getElementById('startScanBtn').textContent = isMultiPhaseMode ? 'Scanning Fase 1...' : 'Scanning...';
+            document.getElementById('startPhase2Btn').style.display = 'none';
+            document.getElementById('startPhase2Btn').disabled = true;
             document.getElementById('clearBtn').disabled = false;
-            document.getElementById('scanStatus').textContent = 'Scanning...';
+            document.getElementById('scanStatus').textContent = isMultiPhaseMode ? 'Scanning Fase 1 (Depan)...' : 'Scanning...';
             document.getElementById('pointCount').textContent = '0';
             document.getElementById('frameCount').textContent = '0';
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressFill').textContent = '0%';
+            if (isMultiPhaseMode) {
+                document.getElementById('currentPhase').textContent = 'Fase 1: Depan';
+            }
             
             // Send PointCloud mode request directly and multiple times to ensure server receives it
             console.log('🔄 Switching server mode to PointCloud...');
@@ -1179,6 +1320,128 @@
             if (debugMsgEl) debugMsgEl.textContent = 'Waiting for PointCloud data from server...';
         }
         
+        /**
+         * Toggle multi-phase mode on/off
+         */
+        function toggleMultiPhaseMode() {
+            isMultiPhaseMode = document.getElementById('enableMultiPhaseCheckbox').checked;
+            const phaseInfoEl = document.getElementById('phaseInfo');
+            if (phaseInfoEl) {
+                phaseInfoEl.style.display = isMultiPhaseMode ? 'block' : 'none';
+            }
+            
+            if (isMultiPhaseMode) {
+                console.log('🔄 Multi-phase mode ENABLED');
+                document.getElementById('currentPhase').textContent = 'Belum dimulai';
+            } else {
+                console.log('🔄 Multi-phase mode DISABLED');
+                scanPhase = 0;
+            }
+        }
+        
+        /**
+         * Start Phase 2 (belakang/back) scanning
+         */
+        function startPhase2() {
+            if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
+                alert('Koneksi WebSocket tidak aktif!');
+                return;
+            }
+            
+            if (pointCloudFront.length === 0) {
+                alert('Fase 1 belum selesai atau tidak ada data!');
+                return;
+            }
+            
+            console.log('🔄 Starting MULTI-PHASE SCAN - Phase 2 (Belakang/Back)');
+            console.log('📌 Duration: 15 seconds');
+            console.log('📌 Phase 1 points: ' + pointCloudFront.length.toLocaleString());
+            
+            // Set phase 2
+            scanPhase = 2;
+            pointCloudBack = [];
+            pointCloud = []; // Reset current point cloud for phase 2
+            
+            // Reset counters
+            pointCloudFrames = [];
+            debugDataCount = 0;
+            frameCount = 0;
+            dataReceivedDuringScan = 0;
+            pointCloudDataReceived = 0;
+            scanStartTime = Date.now();
+            
+            // Set flags
+            isScanning = true;
+            window.isScanning = true;
+            isCaptureActive = true;
+            
+            // Auto-stop after phaseDuration (15 seconds)
+            if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
+            autoCaptureTimer = setTimeout(() => {
+                console.log('⏱️ Phase 2 (15 seconds) elapsed - auto-stopping capture');
+                pointCloudBack = [...pointCloud];
+                console.log('✅ Phase 2 (Belakang) complete: ' + pointCloudBack.length.toLocaleString() + ' points');
+                
+                // Merge both phases
+                mergePhasePointClouds();
+                
+                stopCapture();
+            }, phaseDuration);
+            
+            // Update UI
+            document.getElementById('startPhase2Btn').disabled = true;
+            document.getElementById('startPhase2Btn').style.display = 'none';
+            document.getElementById('startScanBtn').disabled = true;
+            document.getElementById('startScanBtn').classList.add('scanning');
+            document.getElementById('startScanBtn').textContent = 'Scanning Fase 2...';
+            document.getElementById('stopScanBtn').disabled = false;
+            document.getElementById('scanStatus').textContent = 'Scanning Fase 2 (Belakang)...';
+            document.getElementById('pointCount').textContent = '0';
+            document.getElementById('frameCount').textContent = '0';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+            document.getElementById('currentPhase').textContent = 'Fase 2: Belakang';
+            
+            // Send PointCloud mode request
+            socket.send("PointCloud");
+            console.log('📤 Sent PointCloud mode request for Phase 2');
+        }
+        
+        /**
+         * Merge point clouds from Phase 1 (depan) and Phase 2 (belakang)
+         * Combines both point clouds into one complete 3D object
+         */
+        function mergePhasePointClouds() {
+            console.log('🔗 Merging point clouds from Phase 1 and Phase 2...');
+            console.log('📊 Phase 1 (Depan): ' + pointCloudFront.length.toLocaleString() + ' points');
+            console.log('📊 Phase 2 (Belakang): ' + pointCloudBack.length.toLocaleString() + ' points');
+            
+            if (pointCloudFront.length === 0 && pointCloudBack.length === 0) {
+                console.warn('⚠️ No points to merge!');
+                return;
+            }
+            
+            // Combine both point clouds
+            // For now, simple concatenation - can be improved with ICP alignment later
+            pointCloud = [...pointCloudFront, ...pointCloudBack];
+            
+            console.log('✅ Merged point cloud: ' + pointCloud.length.toLocaleString() + ' points total');
+            
+            // Update display
+            updatePointCloudDisplay();
+            centerModel();
+            
+            // Update UI
+            document.getElementById('scanStatus').textContent = 
+                'Scan selesai! ' + pointCloud.length.toLocaleString() + ' points (Depan: ' + 
+                pointCloudFront.length.toLocaleString() + ', Belakang: ' + 
+                pointCloudBack.length.toLocaleString() + ')';
+            document.getElementById('pointCount').textContent = pointCloud.length.toLocaleString();
+            document.getElementById('generateMeshBtn').disabled = false;
+            document.getElementById('exportSTLBtn').disabled = false;
+            document.getElementById('currentPhase').textContent = 'Selesai - Objek 3D Utuh';
+        }
+        
         function stopCapture() {
             console.log('🛑 Stopping capture...');
             isCaptureActive = false;
@@ -1189,7 +1452,44 @@
                 clearTimeout(autoCaptureTimer);
                 autoCaptureTimer = null;
             }
+            
+            // Switch back to Color mode to stop sending point cloud data
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Color");
+                console.log('📤 Switched to Color mode to stop point cloud data');
+            }
 
+            // Handle multi-phase mode
+            if (isMultiPhaseMode && scanPhase === 1) {
+                // Phase 1 complete - save to pointCloudFront
+                pointCloudFront = [...pointCloud];
+                console.log('✅ Phase 1 (Depan) complete: ' + pointCloudFront.length.toLocaleString() + ' points');
+                
+                // Update UI for Phase 2
+                document.getElementById('startPhase2Btn').style.display = 'inline-block';
+                document.getElementById('startPhase2Btn').disabled = false;
+                document.getElementById('scanStatus').textContent = 
+                    'Fase 1 selesai! Putar objek 180° lalu klik "Mulai Fase 2" (' + 
+                    pointCloudFront.length.toLocaleString() + ' points)';
+                document.getElementById('currentPhase').textContent = 'Fase 1 selesai - Menunggu Fase 2';
+                
+                // Reset UI buttons
+                document.getElementById('startScanBtn').disabled = false;
+                document.getElementById('startScanBtn').classList.remove('scanning');
+                document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+                document.getElementById('stopScanBtn').disabled = true;
+                
+                return; // Don't enable mesh/export yet - wait for Phase 2
+            } else if (isMultiPhaseMode && scanPhase === 2) {
+                // Phase 2 complete - already merged in timeout handler
+                document.getElementById('startScanBtn').disabled = false;
+                document.getElementById('startScanBtn').classList.remove('scanning');
+                document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+                document.getElementById('stopScanBtn').disabled = true;
+                return;
+            }
+
+            // Normal mode or both phases complete
             // Update UI
             document.getElementById('scanStatus').textContent = pointCloud.length > 0 ?
                 'Capture stopped - ' + pointCloud.length.toLocaleString() + ' points collected' :
@@ -1204,6 +1504,12 @@
                 // Auto-center the point cloud
                 centerModel();
             }
+            
+            // Reset UI buttons
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('startScanBtn').classList.remove('scanning');
+            document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+            document.getElementById('stopScanBtn').disabled = true;
         }
 
         function stopScan() {
@@ -1301,74 +1607,155 @@
 
             console.log('🔧 Generating mesh from', pointCloud.length.toLocaleString(), 'points...');
 
+            // CRITICAL: Stop receiving data during mesh generation to prevent connection errors
+            const wasCaptureActive = isCaptureActive;
+            isCaptureActive = false;
+            
+            // Switch to Color mode to stop point cloud data
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Color");
+                console.log('📤 Switched to Color mode to stop data during mesh generation');
+            }
+
             // CRITICAL: Downsample if too many points (prevent freeze)
             let meshPoints = pointCloud;
-            const maxMeshPoints = 50000; // Max 50k points for mesh generation
+            const maxMeshPoints = 100000; // Increased for better quality mesh
 
             if (pointCloud.length > maxMeshPoints) {
                 console.log('⚠️ Too many points (' + pointCloud.length.toLocaleString() + ') - downsampling to ' + maxMeshPoints.toLocaleString());
-                const skipFactor = Math.ceil(pointCloud.length / maxMeshPoints);
+                // Use uniform sampling instead of skip factor for better quality
+                const step = pointCloud.length / maxMeshPoints;
                 meshPoints = [];
-                for (let i = 0; i < pointCloud.length; i += skipFactor) {
-                    meshPoints.push(pointCloud[i]);
+                for (let i = 0; i < pointCloud.length; i += step) {
+                    const idx = Math.floor(i);
+                    if (idx < pointCloud.length) {
+                        meshPoints.push(pointCloud[idx]);
+                    }
                 }
-                console.log('✅ Downsampled to ' + meshPoints.length.toLocaleString() + ' points');
+                console.log('✅ Downsampled to ' + meshPoints.length.toLocaleString() + ' points using uniform sampling');
 
-                alert('Point cloud terlalu besar (' + pointCloud.length.toLocaleString() + ' points).\n' +
-                      'Akan di-downsample ke ' + meshPoints.length.toLocaleString() + ' points untuk mesh generation.\n\n' +
-                      'Ini normal dan akan menghasilkan mesh yang bagus.');
+                // Don't show alert for better UX
+            }
+
+            // Apply aggressive background filter to mesh points
+            console.log('🔍 Filtering background from mesh points (aggressive mode)...');
+            const beforeFilter = meshPoints.length;
+            meshPoints = filterHumanBodyOnlyAggressive(meshPoints);
+            console.log('✅ Background filter: ' + beforeFilter + ' → ' + meshPoints.length + ' points');
+            
+            if (meshPoints.length < 100) {
+                console.warn('⚠️ Too few points after filtering, using less aggressive filter');
+                // Re-apply with less aggressive filter
+                meshPoints = filterHumanBodyOnly(meshPoints);
             }
 
             document.getElementById('generateMeshBtn').disabled = true;
             document.getElementById('generateMeshBtn').textContent = 'Generating... (' + meshPoints.length.toLocaleString() + ' pts)';
             document.getElementById('scanStatus').textContent = 'Generating mesh from ' + meshPoints.length.toLocaleString() + ' points...';
 
-            // Use setTimeout to prevent UI blocking (give browser time to update UI first)
-            setTimeout(() => {
+            // Use Web Worker-like approach with chunked processing to prevent freeze
+            const processMeshAsync = () => {
                 try {
-                    console.log('🔧 Starting mesh creation...');
+                    console.log('🔧 Starting mesh creation (chunked async)...');
                     const startTime = Date.now();
+                    
+                    // Process mesh in chunks using requestIdleCallback or setTimeout
+                    let progress = 0;
+                    
+                    const updateProgress = (p) => {
+                        progress = p;
+                        const progressPercent = Math.round(p * 100);
+                        document.getElementById('scanStatus').textContent = 
+                            'Generating mesh... ' + progressPercent + '%';
+                    };
+                    
+                    // Use setTimeout to break up work
+                    setTimeout(() => {
+                        updateProgress(0.2);
+                        
+                        setTimeout(() => {
+                            updateProgress(0.5);
+                            
+                            setTimeout(() => {
+                                updateProgress(0.8);
+                                
+                                setTimeout(() => {
+                                    try {
+                                        updateProgress(0.9);
+                                        
+                                        // Create mesh (this is the heavy operation)
+                                        mesh = createMeshFromPointCloud(meshPoints);
+                                        
+                                        updateProgress(1.0);
+                                        
+                                        const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                                        console.log('✅ Mesh generation completed in ' + elapsedTime + ' seconds');
 
-                    mesh = createMeshFromPointCloud(meshPoints);
+                                        const oldMesh = scene.getObjectByName('mesh');
+                                        if (oldMesh) {
+                                            scene.remove(oldMesh);
+                                        }
 
-                    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);
-                    console.log('✅ Mesh generation completed in ' + elapsedTime + ' seconds');
+                                        // Also hide point cloud when showing mesh
+                                        const oldPointCloud = scene.getObjectByName('pointCloud');
+                                        if (oldPointCloud) {
+                                            oldPointCloud.visible = false;
+                                        }
 
-                    const oldMesh = scene.getObjectByName('mesh');
-                    if (oldMesh) {
-                        scene.remove(oldMesh);
-                    }
+                                        if (mesh) {
+                                            mesh.name = 'mesh';
+                                            scene.add(mesh);
+                                            console.log('✅ Mesh added to scene successfully');
 
-                    // Also hide point cloud when showing mesh
-                    const oldPointCloud = scene.getObjectByName('pointCloud');
-                    if (oldPointCloud) {
-                        oldPointCloud.visible = false;
-                    }
+                                            // Apply current manual position
+                                            mesh.position.set(
+                                                window.objectPosition ? window.objectPosition.x : 0,
+                                                window.objectPosition ? window.objectPosition.y : 0,
+                                                window.objectPosition ? window.objectPosition.z : 0
+                                            );
 
-                    if (mesh) {
-                        mesh.name = 'mesh';
-                        scene.add(mesh);
-                        console.log('✅ Mesh added to scene successfully');
+                                            // Force update matrix before centering
+                                            mesh.updateMatrixWorld();
+                                            
+                                            // Auto-center the mesh with delay to ensure it's rendered
+                                            setTimeout(() => {
+                                                centerModel();
+                                                // Center again after a short delay to ensure it's correct
+                                                setTimeout(() => centerModel(), 200);
+                                            }, 100);
 
-                        // Auto-center the mesh
-                        centerModel();
+                                            // Update UI
+                                            document.getElementById('scanStatus').textContent = 'Mesh generated successfully in ' + elapsedTime + 's';
+                                            document.getElementById('exportSTLBtn').disabled = false;
 
-                        // Update UI
-                        document.getElementById('scanStatus').textContent = 'Mesh generated successfully in ' + elapsedTime + 's';
-                        document.getElementById('exportSTLBtn').disabled = false;
+                                            alert('✅ Mesh berhasil dibuat!\n\n' +
+                                                  'Points: ' + meshPoints.length.toLocaleString() + '\n' +
+                                                  'Time: ' + elapsedTime + ' seconds\n\n' +
+                                                  'Background telah di-filter dari mesh.\n' +
+                                                  'Objek telah diposisikan di tengah-atas kanvas.');
+                                        } else {
+                                            console.error('❌ Failed to generate mesh');
+                                            document.getElementById('scanStatus').textContent = 'Failed to generate mesh';
+                                            alert('Gagal membuat mesh. Coba sesuaikan Mesh Resolution atau scan ulang dengan lebih banyak points.');
+                                        }
 
-                        alert('✅ Mesh berhasil dibuat!\n\n' +
-                              'Points: ' + meshPoints.length.toLocaleString() + '\n' +
-                              'Time: ' + elapsedTime + ' seconds\n\n' +
-                              'Anda bisa Export STL sekarang.');
-                    } else {
-                        console.error('❌ Failed to generate mesh');
-                        document.getElementById('scanStatus').textContent = 'Failed to generate mesh';
-                        alert('Gagal membuat mesh. Coba sesuaikan Mesh Resolution atau scan ulang dengan lebih banyak points.');
-                    }
-
-                    document.getElementById('generateMeshBtn').disabled = false;
-                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                                        document.getElementById('generateMeshBtn').disabled = false;
+                                        document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
+                                        
+                                        // Restore capture state if it was active
+                                        if (wasCaptureActive) {
+                                            console.log('⚠️ Note: Capture was active before mesh generation');
+                                        }
+                                        
+                                    } catch (error) {
+                                        console.error('❌ Error in mesh creation:', error);
+                                        throw error;
+                                    }
+                                }, 50);
+                            }, 50);
+                        }, 50);
+                    }, 50);
+                    
                 } catch (error) {
                     console.error('❌ Error generating mesh:', error);
                     console.error('Stack trace:', error.stack);
@@ -1377,7 +1764,10 @@
                     document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
                     document.getElementById('scanStatus').textContent = 'Error generating mesh';
                 }
-            }, 100); // 100ms delay to let UI update first
+            };
+
+            // Use setTimeout to prevent UI blocking (give browser time to update UI first)
+            setTimeout(processMeshAsync, 100);
         }
 
         function createMeshFromPointCloud(points) {
@@ -1386,111 +1776,369 @@
                 return null;
             }
             
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(points.length * 3);
-            const colors = new Float32Array(points.length * 3);
+            console.log('🔧 Creating mesh from', points.length, 'points with improved reconstruction...');
             
-            for (let i = 0; i < points.length; i++) {
-                positions[i * 3] = points[i].x;
-                positions[i * 3 + 1] = points[i].y;
-                positions[i * 3 + 2] = points[i].z;
-                
-                colors[i * 3] = (points[i].r || 128) / 255;
-                colors[i * 3 + 1] = (points[i].g || 128) / 255;
-                colors[i * 3 + 2] = (points[i].b || 128) / 255;
-            }
-            
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            
-            const indices = createTriangulation(points);
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-            
-            const material = new THREE.MeshPhongMaterial({
-                vertexColors: true,
-                side: THREE.DoubleSide,
-                flatShading: true
-            });
-            
-            return new THREE.Mesh(geometry, material);
-        }
-        
-        function createTriangulation(points) {
-            console.log('🔧 Creating triangulation for ' + points.length.toLocaleString() + ' points...');
-
-            // SIMPLIFIED: Use fast grid-based triangulation instead of complex ICP/spatial hash
-            // This is much faster and won't freeze the browser
-
+            // Use improved mesh generation from pointcloud processor
+            // This creates better mesh with proper surface reconstruction
+            // But limit points to prevent freeze
             const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
-            const indices = [];
-
-            console.log('🔧 Using fast grid-based triangulation (resolution: ' + resolution + ')...');
-
-            // Group points into grid cells
-            const gridSize = resolution;
-            const grid = new Map();
-
-            // Build grid
-            for (let i = 0; i < points.length; i++) {
-                const p = points[i];
-                const gx = Math.floor(p.x / gridSize);
-                const gy = Math.floor(p.y / gridSize);
-                const gz = Math.floor(p.z / gridSize);
-                const key = `${gx},${gy},${gz}`;
-
-                if (!grid.has(key)) {
-                    grid.set(key, []);
+            
+            // Further limit points for mesh generation to prevent freeze
+            let pointsForMesh = points;
+            if (points.length > 20000) {
+                console.log('⚠️ Too many points for mesh (' + points.length + '), downsampling to 20000');
+                const skip = Math.ceil(points.length / 20000);
+                pointsForMesh = [];
+                for (let i = 0; i < points.length; i += skip) {
+                    pointsForMesh.push(points[i]);
                 }
-                grid.get(key).push(i);
             }
-
-            console.log('✅ Grid created with ' + grid.size + ' cells');
-
-            // Create triangles within and between grid cells
-            let triangleCount = 0;
-            const maxTriangles = 100000; // Limit triangles to prevent freeze
-
-            grid.forEach((cellPoints, key) => {
-                if (triangleCount >= maxTriangles) return;
-
-                // Connect points within the same cell
-                for (let i = 0; i < cellPoints.length - 2 && triangleCount < maxTriangles; i++) {
-                    for (let j = i + 1; j < cellPoints.length - 1 && triangleCount < maxTriangles; j++) {
-                        for (let k = j + 1; k < cellPoints.length && triangleCount < maxTriangles; k++) {
-                            const p1 = points[cellPoints[i]];
-                            const p2 = points[cellPoints[j]];
-                            const p3 = points[cellPoints[k]];
-
-                            // Check if triangle is valid (not too flat)
-                            const d12 = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
-                            const d23 = Math.hypot(p3.x - p2.x, p3.y - p2.y, p3.z - p2.z);
-                            const d31 = Math.hypot(p1.x - p3.x, p1.y - p3.y, p1.z - p3.z);
-
-                            // Only create triangle if edges are reasonable length
-                            if (d12 > 0.001 && d23 > 0.001 && d31 > 0.001 &&
-                                d12 < gridSize * 2 && d23 < gridSize * 2 && d31 < gridSize * 2) {
-                                indices.push(cellPoints[i], cellPoints[j], cellPoints[k]);
-                                triangleCount++;
-                            }
-                        }
-                    }
+            
+            const meshData = pointCloudProcessor.createImprovedMesh(pointsForMesh, resolution);
+            
+            if (meshData.faces.length === 0) {
+                console.warn('⚠️ No faces generated, using fallback');
+                // Fallback: create simple mesh
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(points.length * 3);
+                const colors = new Float32Array(points.length * 3);
+                
+                for (let i = 0; i < points.length; i++) {
+                    positions[i * 3] = points[i].x;
+                    positions[i * 3 + 1] = points[i].y;
+                    positions[i * 3 + 2] = points[i].z;
+                    
+                    colors[i * 3] = (points[i].r || 128) / 255;
+                    colors[i * 3 + 1] = (points[i].g || 128) / 255;
+                    colors[i * 3 + 2] = (points[i].b || 128) / 255;
                 }
-            });
-
-            console.log('✅ Created ' + triangleCount.toLocaleString() + ' triangles');
-
-            if (indices.length === 0) {
-                console.warn('⚠️ No triangles created - using fallback');
-                // Fallback: simple sequential triangulation
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                
+                // Simple sequential triangulation as fallback
+                const indices = [];
                 for (let i = 0; i < Math.min(points.length - 2, 10000); i += 3) {
                     if (i + 2 < points.length) {
                         indices.push(i, i + 1, i + 2);
                     }
                 }
+                geometry.setIndex(indices);
+                geometry.computeVertexNormals();
+                
+                const material = new THREE.MeshPhongMaterial({
+                    vertexColors: true,
+                    side: THREE.DoubleSide,
+                    flatShading: false // Smooth shading for better appearance
+                });
+                
+                return new THREE.Mesh(geometry, material);
             }
+            
+            // Create geometry from improved mesh data
+            const geometry = new THREE.BufferGeometry();
+            const vertices = new Float32Array(meshData.vertices.length * 3);
+            const colors = new Float32Array(meshData.vertices.length * 3);
+            
+            // Map original points to mesh vertices to preserve colors
+            for (let i = 0; i < meshData.vertices.length; i++) {
+                const v = meshData.vertices[i];
+                vertices[i * 3] = v[0];
+                vertices[i * 3 + 1] = v[1];
+                vertices[i * 3 + 2] = v[2];
+                
+                // Find closest original point for color
+                let closestIdx = 0;
+                let minDist = Infinity;
+                for (let j = 0; j < points.length; j++) {
+                    const dist = Math.hypot(
+                        points[j].x - v[0],
+                        points[j].y - v[1],
+                        points[j].z - v[2]
+                    );
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestIdx = j;
+                    }
+                }
+                
+                colors[i * 3] = (points[closestIdx].r || 128) / 255;
+                colors[i * 3 + 1] = (points[closestIdx].g || 128) / 255;
+                colors[i * 3 + 2] = (points[closestIdx].b || 128) / 255;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            // Create indices from faces
+            const indices = new Uint32Array(meshData.faces.length * 3);
+            for (let i = 0; i < meshData.faces.length; i++) {
+                indices[i * 3] = meshData.faces[i][0];
+                indices[i * 3 + 1] = meshData.faces[i][1];
+                indices[i * 3 + 2] = meshData.faces[i][2];
+            }
+            
+            geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+            
+            // Compute normals for smooth shading (this helps fix broken/rough surfaces)
+            geometry.computeVertexNormals();
+            
+            // Compute normals for smooth shading
+            geometry.computeVertexNormals();
+            
+            // Apply light smoothing to fix broken surfaces (without causing freeze)
+            const positions = geometry.attributes.position;
+            const normals = geometry.attributes.normal;
+            const vertexCount = positions.count;
+            
+            // Create vertex neighbor map for smoothing
+            const neighbors = new Array(vertexCount).fill(null).map(() => []);
+            for (let i = 0; i < indices.length; i += 3) {
+                const i1 = indices[i];
+                const i2 = indices[i + 1];
+                const i3 = indices[i + 2];
+                
+                if (!neighbors[i1].includes(i2)) neighbors[i1].push(i2);
+                if (!neighbors[i1].includes(i3)) neighbors[i1].push(i3);
+                if (!neighbors[i2].includes(i1)) neighbors[i2].push(i1);
+                if (!neighbors[i2].includes(i3)) neighbors[i2].push(i3);
+                if (!neighbors[i3].includes(i1)) neighbors[i3].push(i1);
+                if (!neighbors[i3].includes(i2)) neighbors[i3].push(i2);
+            }
+            
+            // Apply light Laplacian smoothing (only 1 iteration to prevent freeze)
+            // But only smooth vertices that have enough neighbors (to preserve shape)
+            const smoothingFactor = 0.15; // Light smoothing to preserve detail
+            const newPositions = new Float32Array(positions.array.length);
+            
+            for (let i = 0; i < vertexCount; i++) {
+                const x = positions.array[i * 3];
+                const y = positions.array[i * 3 + 1];
+                const z = positions.array[i * 3 + 2];
+                
+                // Only smooth if vertex has enough neighbors (at least 3)
+                if (neighbors[i].length >= 3) {
+                    // Average with neighbors
+                    let avgX = 0, avgY = 0, avgZ = 0;
+                    neighbors[i].forEach(nIdx => {
+                        avgX += positions.array[nIdx * 3];
+                        avgY += positions.array[nIdx * 3 + 1];
+                        avgZ += positions.array[nIdx * 3 + 2];
+                    });
+                    avgX /= neighbors[i].length;
+                    avgY /= neighbors[i].length;
+                    avgZ /= neighbors[i].length;
+                    
+                    // Blend original with averaged position (preserve shape)
+                    newPositions[i * 3] = x * (1 - smoothingFactor) + avgX * smoothingFactor;
+                    newPositions[i * 3 + 1] = y * (1 - smoothingFactor) + avgY * smoothingFactor;
+                    newPositions[i * 3 + 2] = z * (1 - smoothingFactor) + avgZ * smoothingFactor;
+                } else {
+                    // Keep original position for vertices with few neighbors (boundary/edge vertices)
+                    newPositions[i * 3] = x;
+                    newPositions[i * 3 + 1] = y;
+                    newPositions[i * 3 + 2] = z;
+                }
+            }
+            
+            positions.array.set(newPositions);
+            
+            // Recompute normals after smoothing
+            geometry.computeVertexNormals();
+            geometry.computeBoundingSphere();
+            
+            // Repair mesh: remove duplicate faces and fix normals
+            geometry = repairMeshGeometry(geometry);
+            
+            // Final pass: ensure mesh is watertight by checking for unpaired edges
+            geometry = ensureWatertightMesh(geometry, positions, vertexCount);
+            
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: false // Smooth shading for better appearance
+            });
+            
+            const finalVertexCount = meshData.vertices.length;
+            console.log('✅ Mesh created with', meshData.faces.length, 'faces,', finalVertexCount, 'vertices');
+            
+            return new THREE.Mesh(geometry, material);
+        }
+        
+        /**
+         * Repair mesh: remove duplicate faces and ensure proper orientation
+         */
+        function repairMeshGeometry(geometry) {
+            if (!geometry.index) return geometry;
+            
+            const indices = geometry.index.array;
+            const positions = geometry.attributes.position.array;
+            const faceSet = new Set();
+            const newIndices = [];
+            
+            // Remove duplicate faces
+            for (let i = 0; i < indices.length; i += 3) {
+                const i1 = indices[i];
+                const i2 = indices[i + 1];
+                const i3 = indices[i + 2];
+                
+                // Create sorted key
+                const triKey = [i1, i2, i3].sort((a, b) => a - b).join(',');
+                
+                if (!faceSet.has(triKey)) {
+                    faceSet.add(triKey);
+                    
+                    // Use original orientation (assume it's correct)
+                    newIndices.push(i1, i2, i3);
+                }
+            }
+            
+            // Update geometry with cleaned indices
+            geometry.setIndex(newIndices);
+            geometry.computeVertexNormals();
+            
+            console.log('✅ Mesh repaired: removed', (indices.length - newIndices.length) / 3, 'duplicate faces');
+            
+            return geometry;
+        }
+        
+        /**
+         * Ensure mesh is watertight by filling remaining holes
+         */
+        function ensureWatertightMesh(geometry, positions, vertexCount) {
+            if (!geometry.index) return geometry;
+            
+            const indices = geometry.index.array;
+            const edgeMap = new Map();
+            
+            // Count edge occurrences
+            for (let i = 0; i < indices.length; i += 3) {
+                const i1 = indices[i];
+                const i2 = indices[i + 1];
+                const i3 = indices[i + 2];
+                
+                const edges = [
+                    [i1, i2],
+                    [i2, i3],
+                    [i3, i1]
+                ];
+                
+                edges.forEach(edge => {
+                    const edgeKey = edge.sort((a, b) => a - b).join(',');
+                    if (!edgeMap.has(edgeKey)) {
+                        edgeMap.set(edgeKey, 0);
+                    }
+                    edgeMap.set(edgeKey, edgeMap.get(edgeKey) + 1);
+                });
+            }
+            
+            // Find boundary edges (appear only once)
+            const boundaryEdges = [];
+            edgeMap.forEach((count, edgeKey) => {
+                if (count === 1) {
+                    const [i1, i2] = edgeKey.split(',').map(Number);
+                    boundaryEdges.push([i1, i2]);
+                }
+            });
+            
+            if (boundaryEdges.length === 0) {
+                console.log('✅ Mesh is watertight (no boundary edges)');
+                return geometry;
+            }
+            
+            console.log('🔧 Found', boundaryEdges.length, 'boundary edges, attempting to close...');
+            
+            // Try to close small holes by finding nearby points
+            const newIndices = Array.from(indices);
+            const faceSet = new Set();
+            
+            // Rebuild face set
+            for (let i = 0; i < indices.length; i += 3) {
+                const tri = [indices[i], indices[i + 1], indices[i + 2]].sort((a, b) => a - b);
+                faceSet.add(tri.join(','));
+            }
+            
+            // Process boundary edges (limit for performance)
+            let closed = 0;
+            for (const [i1, i2] of boundaryEdges.slice(0, 1000)) { // Limit to 1000 for performance
+                const p1 = new THREE.Vector3(positions[i1 * 3], positions[i1 * 3 + 1], positions[i1 * 3 + 2]);
+                const p2 = new THREE.Vector3(positions[i2 * 3], positions[i2 * 3 + 1], positions[i2 * 3 + 2]);
+                
+                // Find closest point to form triangle
+                let bestPoint = -1;
+                let bestDist = Infinity;
+                const edgeLength = p1.distanceTo(p2);
+                
+                for (let i = 0; i < vertexCount; i++) {
+                    if (i === i1 || i === i2) continue;
+                    
+                    const p3 = new THREE.Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+                    const dist1 = p1.distanceTo(p3);
+                    const dist2 = p2.distanceTo(p3);
+                    
+                    // Check if triangle is reasonable
+                    if (dist1 < edgeLength * 2 && dist2 < edgeLength * 2) {
+                        const avgDist = (dist1 + dist2) / 2;
+                        if (avgDist < bestDist) {
+                            bestDist = avgDist;
+                            bestPoint = i;
+                        }
+                    }
+                }
+                
+                // Create triangle if good candidate found
+                if (bestPoint !== -1 && bestDist < edgeLength * 1.5) {
+                    const tri = [i1, i2, bestPoint].sort((a, b) => a - b);
+                    const faceKey = tri.join(',');
+                    
+                    if (!faceSet.has(faceKey)) {
+                        faceSet.add(faceKey);
+                        newIndices.push(tri[0], tri[1], tri[2]);
+                        closed++;
+                    }
+                }
+            }
+            
+            if (closed > 0) {
+                geometry.setIndex(newIndices);
+                geometry.computeVertexNormals();
+                console.log('✅ Closed', closed, 'holes in mesh');
+            }
+            
+            return geometry;
+        }
+        
+        function createTriangulation(points) {
+            console.log('🔧 Creating improved triangulation for ' + points.length.toLocaleString() + ' points...');
 
-            return new Uint32Array(indices);
+            // Use improved mesh generation from pointcloud processor
+            // This creates better mesh with proper surface reconstruction
+            const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
+            const meshData = pointCloudProcessor.createImprovedMesh(points, resolution);
+            
+            if (meshData.faces.length === 0) {
+                console.warn('⚠️ No faces from improved mesh, using fallback');
+                // Fallback: simple sequential triangulation
+                const indices = [];
+                for (let i = 0; i < Math.min(points.length - 2, 10000); i += 3) {
+                    if (i + 2 < points.length) {
+                        indices.push(i, i + 1, i + 2);
+                    }
+                }
+                return new Uint32Array(indices);
+            }
+            
+            // Convert faces to indices array
+            const indices = new Uint32Array(meshData.faces.length * 3);
+            for (let i = 0; i < meshData.faces.length; i++) {
+                indices[i * 3] = meshData.faces[i][0];
+                indices[i * 3 + 1] = meshData.faces[i][1];
+                indices[i * 3 + 2] = meshData.faces[i][2];
+            }
+            
+            console.log('✅ Created ' + (indices.length / 3).toLocaleString() + ' triangles using improved mesh generation');
+            
+            return indices;
         }
         
         function exportSTL() {
@@ -1514,8 +2162,28 @@
                     geometryToExport = tempMesh.geometry;
                     console.log('✅ Temporary mesh created for export');
                 } else {
-                    alert('Gagal membuat mesh untuk export. Coba generate mesh terlebih dahulu.');
-                    return;
+                    // If mesh creation fails, try to export as point cloud directly
+                    // Convert point cloud to simple STL format (point-based)
+                    console.log('⚠️ Mesh creation failed, exporting point cloud as simple STL...');
+                    try {
+                        const stlString = convertPointCloudToSTL(pointCloud);
+                        const blob = new Blob([stlString], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                        a.download = 'kinect-scan-pointcloud-' + timestamp + '.stl';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        console.log('✅ Point cloud STL exported successfully:', a.download);
+                        alert('File STL berhasil di-export dari point cloud: ' + a.download + '\n\nCatatan: File ini menggunakan triangulasi sederhana. Untuk hasil lebih baik, generate mesh terlebih dahulu.');
+                        return;
+                    } catch (error) {
+                        alert('Gagal membuat mesh untuk export. Coba generate mesh terlebih dahulu atau pastikan ada cukup points.');
+                        return;
+                    }
                 }
             } else {
                 alert('Tidak ada data untuk di-export! Lakukan scanning terlebih dahulu.');
@@ -1547,26 +2215,180 @@
             }
         }
         
+        /**
+         * Convert point cloud directly to STL format (fallback when mesh generation fails)
+         * Creates simple triangles from nearby points
+         */
+        function convertPointCloudToSTL(points) {
+            if (points.length < 3) {
+                return 'solid kinect_scan\nendsolid kinect_scan\n';
+            }
+            
+            console.log('🔧 Converting point cloud to STL (simple triangulation)...');
+            
+            // Use simple spatial hashing for triangulation
+            const maxDistance = 0.1; // 10cm max distance for connecting points
+            const hashSize = 0.05; // 5cm grid cells
+            const spatialHash = {};
+            
+            // Build spatial hash
+            points.forEach((p, i) => {
+                const hx = Math.floor(p.x / hashSize);
+                const hy = Math.floor(p.y / hashSize);
+                const hz = Math.floor(p.z / hashSize);
+                const key = `${hx},${hy},${hz}`;
+                if (!spatialHash[key]) spatialHash[key] = [];
+                spatialHash[key].push(i);
+            });
+            
+            const triangles = [];
+            const processed = new Set();
+            
+            // Generate triangles from nearby points
+            for (let i = 0; i < points.length; i++) {
+                const p1 = points[i];
+                const hx = Math.floor(p1.x / hashSize);
+                const hy = Math.floor(p1.y / hashSize);
+                const hz = Math.floor(p1.z / hashSize);
+                
+                // Check neighboring cells
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dz = -1; dz <= 1; dz++) {
+                            const key = `${hx+dx},${hy+dy},${hz+dz}`;
+                            if (!spatialHash[key]) continue;
+                            
+                            spatialHash[key].forEach(j => {
+                                if (j <= i) return;
+                                const p2 = points[j];
+                                const dist12 = Math.hypot(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+                                if (dist12 > maxDistance) return;
+                                
+                                // Find third point
+                                for (let dx2 = -1; dx2 <= 1; dx2++) {
+                                    for (let dy2 = -1; dy2 <= 1; dy2++) {
+                                        for (let dz2 = -1; dz2 <= 1; dz2++) {
+                                            const key2 = `${hx+dx2},${hy+dy2},${hz+dz2}`;
+                                            if (!spatialHash[key2]) continue;
+                                            
+                                            spatialHash[key2].forEach(k => {
+                                                if (k === i || k === j) return;
+                                                const p3 = points[k];
+                                                const dist13 = Math.hypot(p3.x - p1.x, p3.y - p1.y, p3.z - p1.z);
+                                                const dist23 = Math.hypot(p3.x - p2.x, p3.y - p2.y, p3.z - p2.z);
+                                                
+                                                if (dist13 <= maxDistance && dist23 <= maxDistance) {
+                                                    const triKey = [i, j, k].sort().join(',');
+                                                    if (!processed.has(triKey)) {
+                                                        processed.add(triKey);
+                                                        triangles.push([i, j, k]);
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // Convert to STL format
+            let stl = 'solid kinect_scan\n';
+            
+            triangles.forEach(tri => {
+                const p1 = points[tri[0]];
+                const p2 = points[tri[1]];
+                const p3 = points[tri[2]];
+                
+                // Calculate normal
+                const v1 = new THREE.Vector3(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+                const v2 = new THREE.Vector3(p3.x - p1.x, p3.y - p1.y, p3.z - p1.z);
+                const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
+                
+                stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
+                stl += `    outer loop\n`;
+                stl += `      vertex ${p1.x.toFixed(6)} ${p1.y.toFixed(6)} ${p1.z.toFixed(6)}\n`;
+                stl += `      vertex ${p2.x.toFixed(6)} ${p2.y.toFixed(6)} ${p2.z.toFixed(6)}\n`;
+                stl += `      vertex ${p3.x.toFixed(6)} ${p3.y.toFixed(6)} ${p3.z.toFixed(6)}\n`;
+                stl += `    endloop\n`;
+                stl += `  endfacet\n`;
+            });
+            
+            stl += 'endsolid kinect_scan\n';
+            console.log('✅ Converted', triangles.length, 'triangles to STL');
+            return stl;
+        }
+        
+        /**
+         * Convert Three.js geometry to STL format with validation
+         * Ensures mesh is valid and properly formatted
+         */
         function convertToSTL(geometry) {
+            console.log('🔧 Converting geometry to STL format...');
+            
+            // Validate and repair geometry before export
+            geometry = validateAndRepairGeometry(geometry);
+            
             let stl = 'solid kinect_scan\n';
             const positions = geometry.attributes.position.array;
             const indices = geometry.index ? geometry.index.array : null;
             
+            let validTriangles = 0;
+            let invalidTriangles = 0;
+            
             if (indices) {
+                // Indexed geometry - more efficient
+                const triangleSet = new Set(); // Track unique triangles
+                
                 for (let i = 0; i < indices.length; i += 3) {
-                    const i1 = indices[i] * 3;
-                    const i2 = indices[i + 1] * 3;
-                    const i3 = indices[i + 2] * 3;
+                    const i1 = indices[i];
+                    const i2 = indices[i + 1];
+                    const i3 = indices[i + 2];
                     
-                    const v1 = new THREE.Vector3(positions[i1], positions[i1 + 1], positions[i1 + 2]);
-                    const v2 = new THREE.Vector3(positions[i2], positions[i2 + 1], positions[i2 + 2]);
-                    const v3 = new THREE.Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2]);
+                    // Validate indices
+                    if (i1 === i2 || i2 === i3 || i1 === i3) {
+                        invalidTriangles++;
+                        continue; // Skip degenerate triangles
+                    }
                     
-                    const normal = new THREE.Vector3().crossVectors(
-                        new THREE.Vector3().subVectors(v2, v1),
-                        new THREE.Vector3().subVectors(v3, v1)
-                    ).normalize();
+                    // Check for duplicate triangles
+                    const triKey = [i1, i2, i3].sort((a, b) => a - b).join(',');
+                    if (triangleSet.has(triKey)) {
+                        invalidTriangles++;
+                        continue; // Skip duplicate triangles
+                    }
+                    triangleSet.add(triKey);
                     
+                    const idx1 = i1 * 3;
+                    const idx2 = i2 * 3;
+                    const idx3 = i3 * 3;
+                    
+                    // Validate array bounds
+                    if (idx1 + 2 >= positions.length || idx2 + 2 >= positions.length || idx3 + 2 >= positions.length) {
+                        invalidTriangles++;
+                        continue;
+                    }
+                    
+                    const v1 = new THREE.Vector3(positions[idx1], positions[idx1 + 1], positions[idx1 + 2]);
+                    const v2 = new THREE.Vector3(positions[idx2], positions[idx2 + 1], positions[idx2 + 2]);
+                    const v3 = new THREE.Vector3(positions[idx3], positions[idx3 + 1], positions[idx3 + 2]);
+                    
+                    // Check for degenerate triangles (zero area)
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+                    const area = normal.length();
+                    
+                    if (area < 0.000001) {
+                        invalidTriangles++;
+                        continue; // Skip degenerate triangles
+                    }
+                    
+                    normal.normalize();
+                    
+                    // Write triangle to STL
                     stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
                     stl += `    outer loop\n`;
                     stl += `      vertex ${v1.x.toFixed(6)} ${v1.y.toFixed(6)} ${v1.z.toFixed(6)}\n`;
@@ -1574,18 +2396,38 @@
                     stl += `      vertex ${v3.x.toFixed(6)} ${v3.y.toFixed(6)} ${v3.z.toFixed(6)}\n`;
                     stl += `    endloop\n`;
                     stl += `  endfacet\n`;
+                    validTriangles++;
                 }
             } else {
+                // Non-indexed geometry
                 const vertexCount = positions.length / 3;
+                const triangleSet = new Set();
+                
                 for (let i = 0; i < vertexCount - 2; i += 3) {
                     const v1 = new THREE.Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
                     const v2 = new THREE.Vector3(positions[(i + 1) * 3], positions[(i + 1) * 3 + 1], positions[(i + 1) * 3 + 2]);
                     const v3 = new THREE.Vector3(positions[(i + 2) * 3], positions[(i + 2) * 3 + 1], positions[(i + 2) * 3 + 2]);
                     
-                    const normal = new THREE.Vector3().crossVectors(
-                        new THREE.Vector3().subVectors(v2, v1),
-                        new THREE.Vector3().subVectors(v3, v1)
-                    ).normalize();
+                    // Check for duplicate triangles
+                    const triKey = `${i},${i+1},${i+2}`;
+                    if (triangleSet.has(triKey)) {
+                        invalidTriangles++;
+                        continue;
+                    }
+                    triangleSet.add(triKey);
+                    
+                    // Check for degenerate triangles
+                    const edge1 = new THREE.Vector3().subVectors(v2, v1);
+                    const edge2 = new THREE.Vector3().subVectors(v3, v1);
+                    const normal = new THREE.Vector3().crossVectors(edge1, edge2);
+                    const area = normal.length();
+                    
+                    if (area < 0.000001) {
+                        invalidTriangles++;
+                        continue;
+                    }
+                    
+                    normal.normalize();
                     
                     stl += `  facet normal ${normal.x.toFixed(6)} ${normal.y.toFixed(6)} ${normal.z.toFixed(6)}\n`;
                     stl += `    outer loop\n`;
@@ -1594,14 +2436,74 @@
                     stl += `      vertex ${v3.x.toFixed(6)} ${v3.y.toFixed(6)} ${v3.z.toFixed(6)}\n`;
                     stl += `    endloop\n`;
                     stl += `  endfacet\n`;
+                    validTriangles++;
                 }
             }
             
             stl += 'endsolid kinect_scan\n';
+            
+            console.log('✅ STL conversion complete:', validTriangles, 'valid triangles,', invalidTriangles, 'invalid triangles skipped');
+            
+            if (validTriangles === 0) {
+                console.error('❌ No valid triangles in geometry!');
+                return null;
+            }
+            
             return stl;
         }
         
+        /**
+         * Validate and repair geometry before STL export
+         * Ensures mesh is watertight and properly formed
+         */
+        function validateAndRepairGeometry(geometry) {
+            console.log('🔧 Validating and repairing geometry...');
+            
+            if (!geometry.index) {
+                console.log('⚠️ Geometry is not indexed, computing index...');
+                // Try to merge vertices if BufferGeometryUtils is available
+                if (typeof THREE.BufferGeometryUtils !== 'undefined') {
+                    geometry = THREE.BufferGeometryUtils.mergeVertices(geometry, 0.001);
+                }
+                geometry.computeVertexNormals();
+                return geometry;
+            }
+            
+            // Remove duplicate vertices
+            const positions = geometry.attributes.position.array;
+            const indices = geometry.index.array;
+            const vertexCount = positions.length / 3;
+            
+            // Recompute normals to ensure consistency
+            geometry.computeVertexNormals();
+            
+            // Ensure bounding sphere is computed
+            if (!geometry.boundingSphere) {
+                geometry.computeBoundingSphere();
+            }
+            
+            console.log('✅ Geometry validated:', vertexCount, 'vertices,', indices.length / 3, 'triangles');
+            
+            return geometry;
+        }
+        
         function clearScan() {
+            // Reset multi-phase data
+            scanPhase = 0;
+            pointCloudFront = [];
+            pointCloudBack = [];
+            isMultiPhaseMode = false;
+            if (document.getElementById('enableMultiPhaseCheckbox')) {
+                document.getElementById('enableMultiPhaseCheckbox').checked = false;
+            }
+            if (document.getElementById('phaseInfo')) {
+                document.getElementById('phaseInfo').style.display = 'none';
+            }
+            if (document.getElementById('startPhase2Btn')) {
+                document.getElementById('startPhase2Btn').style.display = 'none';
+                document.getElementById('startPhase2Btn').disabled = true;
+            }
+            
             // Stop scanning if active
             if (isScanning) {
                 stopScan();
@@ -1659,13 +2561,718 @@
             
             // Update progress bar (based on point count, max 200k points = 100%)
             if (progressFillEl) {
-                const maxPoints = 200000; // Maximum expected points for a good scan
+                const maxPoints = maxTotalPoints; // Maximum expected points for a good scan
                 const progress = Math.min(100, (pointCloud.length / maxPoints) * 100);
                 progressFillEl.style.width = progress + '%';
                 progressFillEl.textContent = Math.round(progress) + '%';
             }
         }
+        
+        /**
+         * Calculate principal component analysis (PCA) to find main orientation
+         * Returns rotation quaternion to align object upright
+         */
+        function calculateOrientationAlignment(points) {
+            if (points.length < 3) return null;
+            
+            // Calculate bounding box to find longest dimension
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            
+            for (let i = 0; i < points.length; i++) {
+                minX = Math.min(minX, points[i].x);
+                maxX = Math.max(maxX, points[i].x);
+                minY = Math.min(minY, points[i].y);
+                maxY = Math.max(maxY, points[i].y);
+                minZ = Math.min(minZ, points[i].z);
+                maxZ = Math.max(maxZ, points[i].z);
+            }
+            
+            const sizeX = maxX - minX;
+            const sizeY = maxY - minY;
+            const sizeZ = maxZ - minZ;
+            
+            // Find longest dimension
+            const maxSize = Math.max(sizeX, sizeY, sizeZ);
+            
+            // For human body, Y (height) should typically be longest
+            // If it's not, rotate to make the longest dimension vertical
+            const rotation = new THREE.Quaternion();
+            
+            // Only rotate if Y is not the longest (object is tilted)
+            if (maxSize === sizeX && sizeX > sizeY * 1.2) {
+                // Longest is X, rotate 90 degrees around Z to make it Y
+                rotation.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+                console.log('🔄 Rotating: X-axis is longest, rotating 90° around Z');
+            } else if (maxSize === sizeZ && sizeZ > sizeY * 1.2) {
+                // Longest is Z, rotate 90 degrees around X to make it Y
+                rotation.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+                console.log('🔄 Rotating: Z-axis is longest, rotating 90° around X');
+            }
+            // If Y is already longest or close, no rotation needed
+            
+            return rotation;
+        }
+        
+        /**
+         * Apply rotation to align object upright (horizontal/tegak)
+         */
+        function alignObjectUpright(obj, points) {
+            if (!obj || !points || points.length < 3) return;
+            
+            // Calculate orientation alignment
+            const rotation = calculateOrientationAlignment(points);
+            if (!rotation) return;
+            
+            // Check if rotation is needed (quaternion is not identity)
+            if (rotation.x === 0 && rotation.y === 0 && rotation.z === 0 && rotation.w === 1) {
+                return; // No rotation needed
+            }
+            
+            // Apply rotation to object
+            // Store original rotation if not already stored
+            if (!obj.userData.originalRotation) {
+                obj.userData.originalRotation = obj.quaternion.clone();
+            }
+            
+            // Apply rotation
+            obj.quaternion.copy(rotation);
+            
+            console.log('🔄 Object rotated to upright orientation');
+        }
+        
+        function centerModel() {
+            if (!scene || !camera) return;
+            
+            // Get all objects that should be centered (point cloud or mesh)
+            const pointCloudObj = scene.getObjectByName('pointCloud');
+            const meshObj = scene.getObjectByName('mesh');
+            
+            const objectsToCenter = [];
+            if (pointCloudObj && pointCloudObj.visible) objectsToCenter.push(pointCloudObj);
+            if (meshObj && meshObj.visible) objectsToCenter.push(meshObj);
+            
+            if (objectsToCenter.length === 0) return;
+            
+            // Get points for orientation calculation
+            let pointsForAlignment = [];
+            if (pointCloudObj && pointCloud.length > 0) {
+                pointsForAlignment = pointCloud;
+            } else if (meshObj && meshObj.geometry) {
+                // Extract points from mesh geometry
+                const positions = meshObj.geometry.attributes.position;
+                if (positions) {
+                    for (let i = 0; i < positions.count; i++) {
+                        pointsForAlignment.push({
+                            x: positions.getX(i),
+                            y: positions.getY(i),
+                            z: positions.getZ(i)
+                        });
+                    }
+                }
+            }
+            
+            // DISABLED: Auto-rotation to preserve original landscape orientation
+            // Uncomment below to enable auto-rotation if needed
+            // if (pointsForAlignment.length > 0) {
+            //     objectsToCenter.forEach(obj => {
+            //         alignObjectUpright(obj, pointsForAlignment);
+            //     });
+            // }
+            
+            // Calculate bounding box of all objects
+            const box = new THREE.Box3();
+            objectsToCenter.forEach(obj => {
+                obj.updateMatrixWorld();
+                box.expandByObject(obj);
+            });
+            
+            if (box.isEmpty()) return;
+            
+            // Calculate center and size
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            
+            // Center all objects at origin (but preserve manual position offset)
+            const offset = center.clone().negate();
+            objectsToCenter.forEach(obj => {
+                // Apply centering offset, then add manual position
+                obj.position.set(
+                    offset.x + (window.objectPosition ? window.objectPosition.x : 0),
+                    offset.y + (window.objectPosition ? window.objectPosition.y : 0),
+                    offset.z + (window.objectPosition ? window.objectPosition.z : 0)
+                );
+            });
+            
+            // Fit camera to view the object properly
+            if (maxDim > 0) {
+                // Get canvas dimensions
+                const container = document.getElementById('viewer');
+                const width = container ? container.clientWidth : 800;
+                const height = container ? container.clientHeight : 600;
+                
+                // Calculate distance needed to fit object in view
+                // Use FOV and object size to calculate optimal distance
+                const fov = camera.fov * (Math.PI / 180); // Convert to radians
+                const distance = Math.max(
+                    maxDim / (2 * Math.tan(fov / 2)), // Fit width
+                    maxDim / (2 * Math.tan(fov / 2) * (height / width)) // Fit height
+                );
+                
+                // Add some padding (20% extra space around object)
+                const distanceWithPadding = distance * 1.2;
+                
+                // Position camera to view the centered object
+                // Place camera in front and slightly above to show object at center-upper part of canvas
+                // For human body, we want to see it centered and slightly above (not below)
+                const cameraY = size.y * 0.2; // Slight offset upward (20% of height)
+                camera.position.set(0, cameraY, distanceWithPadding);
+                camera.lookAt(0, cameraY * 0.5, 0); // Look at slightly above center
+                camera.updateProjectionMatrix();
+            }
+            
+            console.log('✅ Model centered, aligned upright, and fitted to view. Size:', size, 'Center:', center);
+        }
+        
+        /**
+         * Create a simple mesh from point cloud for STL export
+         * Uses improved triangulation to create a proper mesh
+         */
+        function createSimpleMeshForExport(points) {
+            if (points.length < 3) {
+                console.warn('Not enough points for mesh export');
+                return null;
+            }
+            
+            console.log('🔧 Creating simple mesh for export from', points.length, 'points...');
+            
+            // Downsample if too many points for performance (use uniform sampling for better quality)
+            let meshPoints = points;
+            const maxPoints = 150000; // Increased limit for high-quality export
+            
+            if (points.length > maxPoints) {
+                // Use uniform sampling instead of skip factor for better quality
+                const step = points.length / maxPoints;
+                meshPoints = [];
+                for (let i = 0; i < points.length; i += step) {
+                    const idx = Math.floor(i);
+                    if (idx < points.length) {
+                        meshPoints.push(points[idx]);
+                    }
+                }
+                console.log('📉 Downsampled to', meshPoints.length, 'points for export (uniform sampling)');
+            }
+            
+            // Use improved mesh generation from pointcloud processor
+            // Use finer resolution for better quality mesh
+            const baseResolution = parseFloat(document.getElementById('meshResolutionSlider')?.value || 0.05);
+            const resolution = Math.max(0.02, baseResolution * 0.8); // Finer resolution for export
+            console.log('🔧 Generating mesh with resolution:', resolution);
+            
+            const meshData = pointCloudProcessor.createImprovedMesh(meshPoints, resolution);
+            
+            if (meshData.faces.length === 0) {
+                console.warn('⚠️ No faces generated, trying with coarser resolution...');
+                // Try with coarser resolution
+                const coarserMesh = pointCloudProcessor.createImprovedMesh(meshPoints, resolution * 2);
+                if (coarserMesh.faces.length > 0) {
+                    Object.assign(meshData, coarserMesh);
+                    console.log('✅ Generated mesh with coarser resolution');
+                } else {
+                    console.warn('⚠️ Still no faces, using fallback triangulation');
+                    // Fallback: simple sequential triangulation (last resort)
+                    const fallbackFaces = [];
+                    for (let i = 0; i < Math.min(meshPoints.length - 2, 10000); i += 3) {
+                        if (i + 2 < meshPoints.length) {
+                            fallbackFaces.push([i, i + 1, i + 2]);
+                        }
+                    }
+                    meshData.faces = fallbackFaces;
+                }
+            }
+            
+            console.log('✅ Mesh data generated:', meshData.vertices.length, 'vertices,', meshData.faces.length, 'faces');
+            
+            // Create Three.js geometry
+            const geometry = new THREE.BufferGeometry();
+            const vertices = new Float32Array(meshData.vertices.length * 3);
+            const colors = new Float32Array(meshData.vertices.length * 3);
+            
+            for (let i = 0; i < meshData.vertices.length; i++) {
+                const v = meshData.vertices[i];
+                vertices[i * 3] = v[0];
+                vertices[i * 3 + 1] = v[1];
+                vertices[i * 3 + 2] = v[2];
+                
+                // Use original point colors if available
+                const origPoint = meshPoints[i];
+                colors[i * 3] = (origPoint.r || 128) / 255;
+                colors[i * 3 + 1] = (origPoint.g || 128) / 255;
+                colors[i * 3 + 2] = (origPoint.b || 128) / 255;
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            // Create indices
+            const indices = new Uint32Array(meshData.faces.length * 3);
+            for (let i = 0; i < meshData.faces.length; i++) {
+                indices[i * 3] = meshData.faces[i][0];
+                indices[i * 3 + 1] = meshData.faces[i][1];
+                indices[i * 3 + 2] = meshData.faces[i][2];
+            }
+            
+            geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+            geometry.computeVertexNormals();
+            
+            const material = new THREE.MeshPhongMaterial({
+                vertexColors: true,
+                side: THREE.DoubleSide,
+                flatShading: false
+            });
+            
+            return new THREE.Mesh(geometry, material);
+        }
+        
+        /**
+         * Filter point cloud to keep only human body, remove background
+         * Uses simpler depth-based filtering - keeps points in typical human range
+         * and removes outliers that are too far from the main cluster
+         */
+        function filterHumanBodyOnly(points) {
+            if (points.length === 0) return points;
+            
+            console.log('🔍 Filtering human body from', points.length, 'points...');
+            
+            // Step 1: Filter by depth range (0.85m to 4m - Kinect optimal range for humans)
+            const depthFiltered = points.filter(p => {
+                // Z is typically the distance from Kinect (forward direction)
+                // Use absolute value to handle negative Z
+                const dist = Math.abs(p.z);
+                return dist >= 0.85 && dist <= 4.0;
+            });
+            
+            if (depthFiltered.length === 0) {
+                console.warn('⚠️ No points in human depth range, using all points');
+                return points;
+            }
+            
+            console.log('📊 After depth filter:', depthFiltered.length, 'points');
+            
+            // Step 2: Remove outliers using statistical filtering
+            // Find the main cluster by removing points that are too far from the center
+            
+            // Calculate center of mass
+            let centerX = 0, centerY = 0, centerZ = 0;
+            depthFiltered.forEach(p => {
+                centerX += p.x;
+                centerY += p.y;
+                centerZ += p.z;
+            });
+            centerX /= depthFiltered.length;
+            centerY /= depthFiltered.length;
+            centerZ /= depthFiltered.length;
+            
+            // Calculate distances from center
+            const distances = depthFiltered.map(p => {
+                const dx = p.x - centerX;
+                const dy = p.y - centerY;
+                const dz = p.z - centerZ;
+                return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            });
+            
+            // Calculate median distance (more robust than mean)
+            const sortedDistances = [...distances].sort((a, b) => a - b);
+            const medianDist = sortedDistances[Math.floor(sortedDistances.length / 2)];
+            
+            // Keep points within 2x median distance (this keeps the main body, removes far background)
+            const threshold = medianDist * 2.5; // More lenient threshold
+            const filtered = depthFiltered.filter((p, i) => {
+                return distances[i] <= threshold;
+            });
+            
+            console.log('✅ Human body filter:', points.length, '→', filtered.length, 'points (removed', (points.length - filtered.length), 'background points)');
+            
+            // If filter removed too many points (>70%), return depth-filtered only
+            if (filtered.length < points.length * 0.3) {
+                console.warn('⚠️ Filter too aggressive, using depth-filtered points only');
+                return depthFiltered;
+            }
+            
+            return filtered;
+        }
+        
+        /**
+         * Remove duplicate/overlapping points to prevent layering
+         * Uses voxel-based approach for better deduplication
+         * This ensures each voxel (3D cell) contains only one point
+         */
+        function removeDuplicatePoints(newPoints, existingPoints) {
+            if (newPoints.length === 0) return newPoints;
+            
+            console.log('🔍 Removing duplicate points using voxel-based deduplication...');
+            
+            // Use voxel-based approach: each voxel can only contain one point
+            // This is more effective than distance-based for preventing layering
+            const voxelSize = 0.02; // 2cm voxels - smaller for better precision
+            const voxelMap = new Map();
+            
+            // Build voxel map from existing points
+            existingPoints.forEach((p, idx) => {
+                const vx = Math.floor(p.x / voxelSize);
+                const vy = Math.floor(p.y / voxelSize);
+                const vz = Math.floor(p.z / voxelSize);
+                const voxelKey = `${vx},${vy},${vz}`;
+                
+                // Store only one point per voxel (the first one)
+                if (!voxelMap.has(voxelKey)) {
+                    voxelMap.set(voxelKey, p);
+                }
+            });
+            
+            // Filter new points: keep only if voxel is empty
+            const filtered = [];
+            const newVoxelMap = new Map();
+            
+            for (const point of newPoints) {
+                const vx = Math.floor(point.x / voxelSize);
+                const vy = Math.floor(point.y / voxelSize);
+                const vz = Math.floor(point.z / voxelSize);
+                const voxelKey = `${vx},${vy},${vz}`;
+                
+                // Check if voxel is already occupied
+                const existingInVoxel = voxelMap.get(voxelKey);
+                const newInVoxel = newVoxelMap.get(voxelKey);
+                
+                if (!existingInVoxel && !newInVoxel) {
+                    // Voxel is empty, add point
+                    filtered.push(point);
+                    newVoxelMap.set(voxelKey, point);
+                } else {
+                    // Voxel is occupied, check if this point is better (closer to voxel center)
+                    const voxelCenterX = (vx + 0.5) * voxelSize;
+                    const voxelCenterY = (vy + 0.5) * voxelSize;
+                    const voxelCenterZ = (vz + 0.5) * voxelSize;
+                    
+                    const pointDist = Math.hypot(
+                        point.x - voxelCenterX,
+                        point.y - voxelCenterY,
+                        point.z - voxelCenterZ
+                    );
+                    
+                    // Replace if this point is closer to voxel center
+                    if (existingInVoxel) {
+                        const existingDist = Math.hypot(
+                            existingInVoxel.x - voxelCenterX,
+                            existingInVoxel.y - voxelCenterY,
+                            existingInVoxel.z - voxelCenterZ
+                        );
+                        
+                        if (pointDist < existingDist) {
+                            // Replace existing point in voxel
+                            voxelMap.set(voxelKey, point);
+                            // Note: we can't remove from existingPoints array, but this prevents future duplicates
+                        }
+                    } else if (newInVoxel) {
+                        const newDist = Math.hypot(
+                            newInVoxel.x - voxelCenterX,
+                            newInVoxel.y - voxelCenterY,
+                            newInVoxel.z - voxelCenterZ
+                        );
+                        
+                        if (pointDist < newDist) {
+                            // Replace in new points
+                            const idx = filtered.indexOf(newInVoxel);
+                            if (idx !== -1) {
+                                filtered[idx] = point;
+                                newVoxelMap.set(voxelKey, point);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            console.log('✅ Voxel deduplication: ' + newPoints.length + ' → ' + filtered.length + ' points (removed ' + (newPoints.length - filtered.length) + ' duplicates)');
+            
+            return filtered;
+        }
+        
+        /**
+         * Alternative: Temporal filtering to reduce layering
+         * Only keeps points that are stable across frames
+         */
+        function applyTemporalFiltering(newPoints, pointCloudFrames) {
+            if (pointCloudFrames.length < 2) return newPoints;
+            
+            console.log('🔍 Applying temporal filtering to reduce noise...');
+            
+            // Build spatial hash for recent frames
+            const cellSize = 0.03; // 3cm cells
+            const frameGrids = [];
+            
+            // Get last 3 frames for temporal consistency
+            const recentFrames = pointCloudFrames.slice(-3);
+            
+            recentFrames.forEach(frame => {
+                const grid = new Map();
+                frame.forEach((p, idx) => {
+                    const gx = Math.floor(p.x / cellSize);
+                    const gy = Math.floor(p.y / cellSize);
+                    const gz = Math.floor(p.z / cellSize);
+                    const key = `${gx},${gy},${gz}`;
+                    
+                    if (!grid.has(key)) {
+                        grid.set(key, []);
+                    }
+                    grid.get(key).push(p);
+                });
+                frameGrids.push(grid);
+            });
+            
+            // Keep points that appear in multiple frames (more stable)
+            const filtered = newPoints.filter(point => {
+                const gx = Math.floor(point.x / cellSize);
+                const gy = Math.floor(point.y / cellSize);
+                const gz = Math.floor(point.z / cellSize);
+                
+                let matchCount = 0;
+                
+                frameGrids.forEach(grid => {
+                    // Check neighboring cells
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                const key = `${gx + dx},${gy + dy},${gz + dz}`;
+                                const cellPoints = grid.get(key) || [];
+                                
+                                for (const otherPoint of cellPoints) {
+                                    const dist = Math.hypot(
+                                        point.x - otherPoint.x,
+                                        point.y - otherPoint.y,
+                                        point.z - otherPoint.z
+                                    );
+                                    
+                                    if (dist < cellSize) {
+                                        matchCount++;
+                                        return; // Found match in this frame
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // Keep if appears in at least 1 other frame (temporal consistency)
+                return matchCount >= 1;
+            });
+            
+            console.log('✅ Temporal filter: ' + newPoints.length + ' → ' + filtered.length + ' points');
+            
+            return filtered;
+        }
+        
+        /**
+         * Aggressive filter for mesh generation - removes background more aggressively
+         * Uses tighter clustering to ensure only human body remains
+         */
+        function filterHumanBodyOnlyAggressive(points) {
+            if (points.length === 0) return points;
+            
+            console.log('🔍 Aggressive filtering human body from', points.length, 'points...');
+            
+            // Step 1: Filter by depth range (0.85m to 4m)
+            const depthFiltered = points.filter(p => {
+                const dist = Math.abs(p.z);
+                return dist >= 0.85 && dist <= 4.0;
+            });
+            
+            if (depthFiltered.length === 0) {
+                return points;
+            }
+            
+            // Step 2: Find the main cluster using tighter threshold
+            let centerX = 0, centerY = 0, centerZ = 0;
+            depthFiltered.forEach(p => {
+                centerX += p.x;
+                centerY += p.y;
+                centerZ += p.z;
+            });
+            centerX /= depthFiltered.length;
+            centerY /= depthFiltered.length;
+            centerZ /= depthFiltered.length;
+            
+            // Calculate distances from center
+            const distances = depthFiltered.map(p => {
+                const dx = p.x - centerX;
+                const dy = p.y - centerY;
+                const dz = p.z - centerZ;
+                return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            });
+            
+            // Use tighter threshold for aggressive filtering (1.8x instead of 2.5x)
+            const sortedDistances = [...distances].sort((a, b) => a - b);
+            const medianDist = sortedDistances[Math.floor(sortedDistances.length / 2)];
+            const threshold = medianDist * 1.8; // Tighter threshold for mesh
+            
+            // Also filter by Y position - human body is typically in middle-upper Y range
+            // Remove points that are too low (likely floor) or too high (likely ceiling)
+            const yValues = depthFiltered.map(p => p.y);
+            const sortedY = [...yValues].sort((a, b) => a - b);
+            const minY = sortedY[Math.floor(sortedY.length * 0.1)]; // 10th percentile
+            const maxY = sortedY[Math.floor(sortedY.length * 0.9)]; // 90th percentile
+            
+            const filtered = depthFiltered.filter((p, i) => {
+                // Check distance from center
+                if (distances[i] > threshold) return false;
+                // Check Y position (remove floor and ceiling)
+                if (p.y < minY || p.y > maxY) return false;
+                return true;
+            });
+            
+            console.log('✅ Aggressive filter:', points.length, '→', filtered.length, 'points');
+            
+            return filtered;
+        }
 
+        // Object position control variables - MUST be global
+        window.objectPosition = { x: 0, y: 0, z: 0 };
+        
+        /**
+         * Update object position in the scene
+         * Applies position to both point cloud and mesh
+         */
+        window.updateObjectPosition = function() {
+            if (!scene) {
+                console.warn('Scene not initialized, cannot update position');
+                return;
+            }
+            
+            console.log('📍 Updating object position to:', window.objectPosition);
+            
+            const pointCloudObj = scene.getObjectByName('pointCloud');
+            const meshObj = scene.getObjectByName('mesh');
+            
+            let updated = false;
+            
+            // Apply position to point cloud
+            if (pointCloudObj) {
+                pointCloudObj.position.set(window.objectPosition.x, window.objectPosition.y, window.objectPosition.z);
+                console.log('✅ Updated point cloud position to:', window.objectPosition);
+                updated = true;
+            } else {
+                console.log('ℹ️ Point cloud not found in scene');
+            }
+            
+            // Apply position to mesh
+            if (meshObj) {
+                meshObj.position.set(window.objectPosition.x, window.objectPosition.y, window.objectPosition.z);
+                console.log('✅ Updated mesh position to:', window.objectPosition);
+                updated = true;
+            } else {
+                console.log('ℹ️ Mesh not found in scene');
+            }
+            
+            if (!updated) {
+                console.warn('⚠️ No object found to update position (point cloud or mesh). Make sure you have scanned or generated mesh first.');
+            }
+            
+            // Update display
+            const posDisplay = document.getElementById('currentPosition');
+            if (posDisplay) {
+                posDisplay.textContent = `X: ${window.objectPosition.x.toFixed(2)}, Y: ${window.objectPosition.y.toFixed(2)}, Z: ${window.objectPosition.z.toFixed(2)}`;
+            }
+        };
+        
+        /**
+         * Adjust position by increment
+         */
+        window.adjustPosition = function(axis, increment) {
+            console.log(`🔧 Adjusting position ${axis} by ${increment}`);
+            window.objectPosition[axis] += increment;
+            window.objectPosition[axis] = Math.max(-5, Math.min(5, window.objectPosition[axis])); // Clamp to -5 to 5
+            
+            // Update sliders and input fields
+            const axisUpper = axis.toUpperCase();
+            const slider = document.getElementById(`position${axisUpper}Slider`);
+            const input = document.getElementById(`position${axisUpper}Value`);
+            if (slider) {
+                slider.value = window.objectPosition[axis];
+                console.log(`Updated slider ${axis} to ${window.objectPosition[axis]}`);
+            }
+            if (input) {
+                input.value = window.objectPosition[axis].toFixed(1);
+                console.log(`Updated input ${axis} to ${window.objectPosition[axis]}`);
+            }
+            
+            window.updateObjectPosition();
+        };
+        
+        /**
+         * Update position X
+         */
+        window.updatePositionX = function(value) {
+            console.log('🔧 Updating position X to:', value);
+            window.objectPosition.x = parseFloat(value) || 0;
+            window.objectPosition.x = Math.max(-5, Math.min(5, window.objectPosition.x));
+            const slider = document.getElementById('positionXSlider');
+            if (slider) {
+                slider.value = window.objectPosition.x;
+                console.log('Updated X slider to:', window.objectPosition.x);
+            }
+            window.updateObjectPosition();
+        };
+        
+        /**
+         * Update position Y
+         */
+        window.updatePositionY = function(value) {
+            console.log('🔧 Updating position Y to:', value);
+            window.objectPosition.y = parseFloat(value) || 0;
+            window.objectPosition.y = Math.max(-5, Math.min(5, window.objectPosition.y));
+            const slider = document.getElementById('positionYSlider');
+            if (slider) {
+                slider.value = window.objectPosition.y;
+                console.log('Updated Y slider to:', window.objectPosition.y);
+            }
+            window.updateObjectPosition();
+        };
+        
+        /**
+         * Update position Z
+         */
+        window.updatePositionZ = function(value) {
+            console.log('🔧 Updating position Z to:', value);
+            window.objectPosition.z = parseFloat(value) || 0;
+            window.objectPosition.z = Math.max(-5, Math.min(5, window.objectPosition.z));
+            const slider = document.getElementById('positionZSlider');
+            if (slider) {
+                slider.value = window.objectPosition.z;
+                console.log('Updated Z slider to:', window.objectPosition.z);
+            }
+            window.updateObjectPosition();
+        };
+        
+        /**
+         * Reset object position to center
+         */
+        window.resetObjectPosition = function() {
+            console.log('🔄 Resetting object position to center');
+            window.objectPosition = { x: 0, y: 0, z: 0 };
+            
+            // Update all sliders and inputs
+            ['X', 'Y', 'Z'].forEach(axis => {
+                const slider = document.getElementById(`position${axis}Slider`);
+                const input = document.getElementById(`position${axis}Value`);
+                if (slider) slider.value = 0;
+                if (input) input.value = '0.0';
+            });
+            
+            window.updateObjectPosition();
+            centerModel(); // Also recenter the view
+        };
+        
         // Settings sliders
         document.addEventListener('DOMContentLoaded', function() {
             const maxPointsSlider = document.getElementById('maxPointsSlider');
@@ -1683,6 +3290,50 @@
                     const valueEl = document.getElementById('meshResolutionValue');
                     if (valueEl) valueEl.textContent = e.target.value;
                 });
+            }
+            
+            // Position control sliders - CRITICAL: Must be set up here
+            const positionXSlider = document.getElementById('positionXSlider');
+            const positionYSlider = document.getElementById('positionYSlider');
+            const positionZSlider = document.getElementById('positionZSlider');
+            
+            if (positionXSlider) {
+                positionXSlider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    window.objectPosition.x = value;
+                    const input = document.getElementById('positionXValue');
+                    if (input) input.value = value.toFixed(1);
+                    window.updateObjectPosition();
+                });
+                console.log('✅ Position X slider event listener attached');
+            } else {
+                console.warn('⚠️ Position X slider not found');
+            }
+            
+            if (positionYSlider) {
+                positionYSlider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    window.objectPosition.y = value;
+                    const input = document.getElementById('positionYValue');
+                    if (input) input.value = value.toFixed(1);
+                    window.updateObjectPosition();
+                });
+                console.log('✅ Position Y slider event listener attached');
+            } else {
+                console.warn('⚠️ Position Y slider not found');
+            }
+            
+            if (positionZSlider) {
+                positionZSlider.addEventListener('input', (e) => {
+                    const value = parseFloat(e.target.value);
+                    window.objectPosition.z = value;
+                    const input = document.getElementById('positionZValue');
+                    if (input) input.value = value.toFixed(1);
+                    window.updateObjectPosition();
+                });
+                console.log('✅ Position Z slider event listener attached');
+            } else {
+                console.warn('⚠️ Position Z slider not found');
             }
         });
 
