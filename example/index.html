@@ -1409,10 +1409,11 @@
         
         /**
          * Merge point clouds from Phase 1 (depan) and Phase 2 (belakang)
+         * Uses ICP alignment for accurate registration
          * Combines both point clouds into one complete 3D object
          */
         function mergePhasePointClouds() {
-            console.log('🔗 Merging point clouds from Phase 1 and Phase 2...');
+            console.log('🔗 Merging point clouds from Phase 1 and Phase 2 with ICP alignment...');
             console.log('📊 Phase 1 (Depan): ' + pointCloudFront.length.toLocaleString() + ' points');
             console.log('📊 Phase 2 (Belakang): ' + pointCloudBack.length.toLocaleString() + ' points');
             
@@ -1421,11 +1422,87 @@
                 return;
             }
             
-            // Combine both point clouds
-            // For now, simple concatenation - can be improved with ICP alignment later
-            pointCloud = [...pointCloudFront, ...pointCloudBack];
+            // If only one phase has data, use it directly
+            if (pointCloudFront.length === 0) {
+                pointCloud = [...pointCloudBack];
+                console.log('⚠️ Only Phase 2 data available');
+            } else if (pointCloudBack.length === 0) {
+                pointCloud = [...pointCloudFront];
+                console.log('⚠️ Only Phase 1 data available');
+            } else {
+                // Both phases have data - perform ICP alignment
+                console.log('🔄 Performing ICP alignment for multi-phase registration...');
+                
+                // Step 1: Initial alignment - rotate back point cloud 180° around Y-axis
+                // This assumes the object was rotated 180° between phases
+                const rotatedBack = pointCloudBack.map(p => ({
+                    x: -p.x,  // Flip X (rotate 180° around Y)
+                    y: p.y,   // Keep Y (vertical axis)
+                    z: -p.z,  // Flip Z (rotate 180° around Y)
+                    r: p.r,
+                    g: p.g,
+                    b: p.b
+                }));
+                
+                console.log('✅ Applied initial 180° rotation to Phase 2');
+                
+                // Step 2: Center both point clouds for better alignment
+                const frontCenter = calculateCentroid(pointCloudFront);
+                const backCenter = calculateCentroid(rotatedBack);
+                
+                const centeredFront = pointCloudFront.map(p => ({
+                    x: p.x - frontCenter.x,
+                    y: p.y - frontCenter.y,
+                    z: p.z - frontCenter.z,
+                    r: p.r,
+                    g: p.g,
+                    b: p.b
+                }));
+                
+                const centeredBack = rotatedBack.map(p => ({
+                    x: p.x - backCenter.x,
+                    y: p.y - backCenter.y,
+                    z: p.z - backCenter.z,
+                    r: p.r,
+                    g: p.g,
+                    b: p.b
+                }));
+                
+                // Step 3: Perform ICP alignment
+                console.log('🔄 Running ICP algorithm...');
+                const icpResult = pointCloudProcessor.icpAlign(
+                    centeredBack,
+                    centeredFront,
+                    50,  // maxIterations
+                    0.01  // tolerance (1cm)
+                );
+                
+                if (icpResult.transform) {
+                    console.log('✅ ICP alignment successful');
+                    
+                    // Step 4: Apply ICP transform and restore original positions
+                    const alignedBack = icpResult.alignedPoints.map(p => ({
+                        x: p.x + frontCenter.x, // Restore to front center position
+                        y: p.y + frontCenter.y,
+                        z: p.z + frontCenter.z,
+                        r: p.r,
+                        g: p.g,
+                        b: p.b
+                    }));
+                    
+                    // Step 5: Merge aligned point clouds with overlap removal
+                    pointCloud = mergeWithOverlapRemoval(pointCloudFront, alignedBack, 0.02); // 2cm overlap threshold
+                    
+                    console.log('✅ Merged with ICP: ' + pointCloud.length.toLocaleString() + ' points (removed ' + 
+                        (pointCloudFront.length + pointCloudBack.length - pointCloud.length).toLocaleString() + ' duplicates)');
+                } else {
+                    console.warn('⚠️ ICP alignment failed, using simple merge');
+                    // Fallback: simple merge with initial rotation
+                    pointCloud = [...pointCloudFront, ...rotatedBack];
+                }
+            }
             
-            console.log('✅ Merged point cloud: ' + pointCloud.length.toLocaleString() + ' points total');
+            console.log('✅ Final merged point cloud: ' + pointCloud.length.toLocaleString() + ' points total');
             
             // Update display
             updatePointCloudDisplay();
@@ -1440,6 +1517,58 @@
             document.getElementById('generateMeshBtn').disabled = false;
             document.getElementById('exportSTLBtn').disabled = false;
             document.getElementById('currentPhase').textContent = 'Selesai - Objek 3D Utuh';
+        }
+        
+        /**
+         * Calculate centroid of point cloud
+         */
+        function calculateCentroid(points) {
+            if (points.length === 0) return { x: 0, y: 0, z: 0 };
+            
+            let sumX = 0, sumY = 0, sumZ = 0;
+            for (const p of points) {
+                sumX += p.x;
+                sumY += p.y;
+                sumZ += p.z;
+            }
+            
+            return {
+                x: sumX / points.length,
+                y: sumY / points.length,
+                z: sumZ / points.length
+            };
+        }
+        
+        /**
+         * Merge two point clouds with overlap removal using voxel-based deduplication
+         */
+        function mergeWithOverlapRemoval(points1, points2, voxelSize = 0.02) {
+            const merged = [...points1];
+            const voxelMap = new Map();
+            
+            // Add points1 to voxel map
+            points1.forEach(p => {
+                const gx = Math.floor(p.x / voxelSize);
+                const gy = Math.floor(p.y / voxelSize);
+                const gz = Math.floor(p.z / voxelSize);
+                const key = `${gx},${gy},${gz}`;
+                voxelMap.set(key, true);
+            });
+            
+            // Add points2 only if voxel is empty
+            points2.forEach(p => {
+                const gx = Math.floor(p.x / voxelSize);
+                const gy = Math.floor(p.y / voxelSize);
+                const gz = Math.floor(p.z / voxelSize);
+                const key = `${gx},${gy},${gz}`;
+                
+                if (!voxelMap.has(key)) {
+                    merged.push(p);
+                    voxelMap.set(key, true);
+                }
+            });
+            
+            return merged;
         }
         
         function stopCapture() {
