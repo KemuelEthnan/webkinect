@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinect Mesh Scanner - Solid Mesh (Like Skanect)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="pointcloud-processor.js"></script>
+    <script src="depth-to-mesh.js"></script>
+    <script src="kinect-fusion.js"></script>
+    <script src="mesh-scanner.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .info-banner {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+        }
+
+        .info-banner h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 350px 1fr 400px;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .panel {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .panel h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .depth-viz-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #depthCanvas {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .depth-legend {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        #viewer {
+            width: 100%;
+            height: 600px;
+            background: #1a1a1a;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 14px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.start-btn {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        button.stop-btn {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+        }
+
+        button.export-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .info-item {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #666;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 13px;
+        }
+
+        .info-item .value {
+            color: #333;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-ready {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .status-scanning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-complete {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        @media (max-width: 1400px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Kinect Mesh Scanner</h1>
+            <p style="font-size: 1.2em; opacity: 0.9;">Solid Mesh Generation (Like Skanect) - NOT Point Cloud!</p>
+        </div>
+
+        <div class="content">
+            <div class="info-banner">
+                <h3>✨ Perbedaan dengan Mode Point Cloud Lama:</h3>
+                <ul style="margin-left: 20px; line-height: 1.8;">
+                    <li><strong>❌ Mode Lama:</strong> Menghasilkan titik-titik terpisah (scattered points)</li>
+                    <li><strong>✅ Mode Baru:</strong> Menghasilkan mesh solid yang utuh (continuous surface)</li>
+                    <li><strong>🎨 Depth Visualization:</strong> Real-time depth camera view (hijau = valid, merah = invalid)</li>
+                    <li><strong>⚡ Performance:</strong> Quick Mode untuk hasil cepat dalam hitungan detik</li>
+                </ul>
+            </div>
+
+            <div class="main-grid">
+                <!-- Left Panel: Depth Camera -->
+                <div class="panel">
+                    <h2>📷 Depth Camera View</h2>
+                    <div class="depth-viz-container">
+                        <canvas id="depthCanvas" width="320" height="240"></canvas>
+                        <div class="depth-legend">
+                            <span style="color: #00ff00;">🟢 Valid</span> |
+                            <span style="color: #ff0000;">🔴 Invalid</span> |
+                            <span style="color: #888;">⚫ No Data</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px; font-size: 12px;">
+                        <strong>💡 Tip:</strong> Posisikan objek pada area hijau (0.5-4.0 meter dari Kinect) untuk hasil terbaik
+                    </div>
+                </div>
+
+                <!-- Center Panel: 3D Viewer -->
+                <div class="panel">
+                    <h2>🎬 3D Mesh Viewer</h2>
+                    <div id="viewer"></div>
+                    <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px; font-size: 12px;">
+                        <strong>🖱️ Controls:</strong> Drag to rotate | Scroll to zoom
+                    </div>
+                </div>
+
+                <!-- Right Panel: Controls & Info -->
+                <div>
+                    <div class="panel" style="margin-bottom: 20px;">
+                        <h2>🎮 Controls</h2>
+                        <button id="connectBtn" class="start-btn" onclick="connect()">🔌 Connect to Kinect</button>
+                        <button id="disconnectBtn" onclick="disconnect()" disabled>❌ Disconnect</button>
+                        <button id="startScanBtn" class="start-btn" onclick="startScan()" disabled>🚀 Start Scan</button>
+                        <button id="stopScanBtn" class="stop-btn" onclick="stopScan()" disabled>⏸️ Stop Scan</button>
+                        <button id="generateMeshBtn" onclick="generateMesh()" disabled>🔷 Generate Solid Mesh</button>
+                        <button id="exportBtn" class="export-btn" onclick="exportSTL()" disabled>💾 Export STL</button>
+                        <button id="clearBtn" onclick="clearScan()" disabled>🗑️ Clear</button>
+                    </div>
+
+                    <div class="panel" style="margin-bottom: 20px;">
+                        <h2>📊 Scan Status</h2>
+                        <div class="info-item">
+                            <label>Status:</label>
+                            <span id="scanStatus" class="status-badge status-ready">Ready</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Frames Collected:</label>
+                            <div class="value"><span id="frameCount">0</span> / <span id="maxFrames">100</span></div>
+                        </div>
+                        <div class="info-item">
+                            <label>Mesh Vertices:</label>
+                            <div class="value" id="meshVertices">0</div>
+                        </div>
+                        <div class="info-item">
+                            <label>Mesh Faces:</label>
+                            <div class="value" id="meshFaces">0</div>
+                        </div>
+                    </div>
+
+                    <div class="panel">
+                        <h2>⚙️ Settings</h2>
+                        <div class="info-item">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="quickModeCheckbox" checked onchange="toggleQuickMode()">
+                                ⚡ Quick Mode (Recommended)
+                            </label>
+                            <p style="font-size: 11px; color: #666; margin: 8px 0 0 24px; line-height: 1.4;">
+                                Quick mode generates mesh in seconds. Uncheck for TSDF fusion (slower, more accurate).
+                            </p>
+                        </div>
+                        <div class="info-item">
+                            <label>Max Frames: <span id="maxFramesValue">100</span></label>
+                            <input type="range" id="maxFramesSlider" min="20" max="200" value="100"
+                                   style="width: 100%; margin-top: 5px;" onchange="updateMaxFrames(this.value)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === WebSocket Connection ===
+        var socket = null;
+        var connected = false;
+
+        // === Three.js Scene ===
+        var scene, camera, renderer;
+        var currentMesh = null;
+
+        // === Mesh Scanner ===
+        var meshScanner = new MeshScanner();
+
+        // === Depth Visualization ===
+        var depthCanvas = document.getElementById('depthCanvas');
+        var depthCtx = depthCanvas.getContext('2d');
+
+        // Initialize Three.js viewer
+        function initViewer() {
+            const container = document.getElementById('viewer');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(0, 1, 3);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // Grid
+            const gridHelper = new THREE.GridHelper(5, 10);
+            scene.add(gridHelper);
+
+            // Axes
+            const axesHelper = new THREE.AxesHelper(1);
+            scene.add(axesHelper);
+
+            // Camera controls (simple drag)
+            let isDragging = false;
+            let previousMouse = { x: 0, y: 0 };
+
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                previousMouse = { x: e.clientX, y: e.clientY };
+            });
+
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMouse.x;
+                    const deltaY = e.clientY - previousMouse.y;
+
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
+                    camera.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), deltaY * 0.01);
+                    camera.lookAt(0, 0, 0);
+
+                    previousMouse = { x: e.clientX, y: e.clientY };
+                }
+            });
+
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+
+            renderer.domElement.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const scale = e.deltaY > 0 ? 1.1 : 0.9;
+                camera.position.multiplyScalar(scale);
+            });
+
+            // Start animation loop
+            animate();
+
+            console.log('✅ 3D Viewer initialized');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        // === WebSocket Functions ===
+        function connect() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                console.log('Already connected');
+                return;
+            }
+
+            console.log('🔌 Connecting to ws://127.0.0.1:8181...');
+            socket = new WebSocket("ws://127.0.0.1:8181");
+
+            socket.onopen = function() {
+                console.log('✅ Connected to Kinect server');
+                connected = true;
+
+                // Request PointCloud mode
+                socket.send("PointCloud");
+
+                // Update UI
+                document.getElementById('connectBtn').disabled = true;
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('startScanBtn').disabled = false;
+
+                setStatus('Ready to scan', 'ready');
+            };
+
+            socket.onclose = function() {
+                console.log('❌ Disconnected from server');
+                connected = false;
+
+                document.getElementById('connectBtn').disabled = false;
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('startScanBtn').disabled = true;
+
+                setStatus('Disconnected', 'ready');
+            };
+
+            socket.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                alert('Error: Cannot connect to server. Make sure server.exe is running.');
+            };
+
+            socket.onmessage = function(event) {
+                if (typeof event.data === "string") {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        if (data.points) {
+                            // Visualize depth frame
+                            visualizeDepthFrame(data);
+
+                            // Process for scanning
+                            if (meshScanner.isScanning) {
+                                meshScanner.processDepthFrame(data);
+
+                                // Update UI
+                                const stats = meshScanner.getStats();
+                                document.getElementById('frameCount').textContent = stats.frameCount;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error parsing data:', e);
+                    }
+                }
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+            }
+        }
+
+        // === Depth Visualization (Like Skanect) ===
+        function visualizeDepthFrame(depthData) {
+            if (!depthData || !depthData.points) return;
+
+            const width = depthData.width || 320;
+            const height = depthData.height || 240;
+
+            const imageData = depthCtx.createImageData(width, height);
+            const pixels = imageData.data;
+
+            // Create depth map
+            const depthMap = new Array(height);
+            for (let y = 0; y < height; y++) {
+                depthMap[y] = new Array(width).fill(null);
+            }
+
+            // Fill depth map
+            const focalLength = 525.0;
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            for (const point of depthData.points) {
+                const z = Math.abs(point.z);
+                if (z <= 0) continue;
+
+                const x2d = Math.round((point.x * focalLength / z) + centerX);
+                const y2d = Math.round((-point.y * focalLength / z) + centerY);
+
+                if (x2d >= 0 && x2d < width && y2d >= 0 && y2d < height) {
+                    depthMap[y2d][x2d] = z;
+                }
+            }
+
+            // Render with colors (green = valid, red = invalid, black = no data)
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const depth = depthMap[y][x];
+
+                    if (depth === null) {
+                        // No data - black
+                        pixels[idx] = 20;
+                        pixels[idx + 1] = 20;
+                        pixels[idx + 2] = 20;
+                        pixels[idx + 3] = 255;
+                    } else if (depth >= 0.5 && depth <= 4.0) {
+                        // Valid depth - GREEN (like Skanect)
+                        pixels[idx] = 0;
+                        pixels[idx + 1] = 255;
+                        pixels[idx + 2] = 0;
+                        pixels[idx + 3] = 255;
+                    } else {
+                        // Invalid depth - RED (like Skanect)
+                        pixels[idx] = 255;
+                        pixels[idx + 1] = 0;
+                        pixels[idx + 2] = 0;
+                        pixels[idx + 3] = 255;
+                    }
+                }
+            }
+
+            depthCtx.putImageData(imageData, 0, 0);
+        }
+
+        // === Scanning Functions ===
+        function startScan() {
+            console.log('🚀 Starting mesh scan...');
+
+            // Reset scanner
+            meshScanner.reset();
+            meshScanner.startScanning();
+
+            // Clear previous mesh
+            if (currentMesh) {
+                scene.remove(currentMesh);
+                currentMesh = null;
+            }
+
+            // Update UI
+            document.getElementById('startScanBtn').disabled = true;
+            document.getElementById('stopScanBtn').disabled = false;
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('exportBtn').disabled = true;
+            document.getElementById('clearBtn').disabled = false;
+            document.getElementById('frameCount').textContent = '0';
+            document.getElementById('meshVertices').textContent = '0';
+            document.getElementById('meshFaces').textContent = '0';
+
+            setStatus('Scanning... Collecting depth frames', 'scanning');
+
+            console.log('✅ Scanning started');
+        }
+
+        function stopScan() {
+            console.log('⏸️ Stopping scan...');
+            meshScanner.stopScanning();
+
+            // Update UI
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('stopScanBtn').disabled = true;
+            document.getElementById('generateMeshBtn').disabled = false;
+
+            setStatus('Scan stopped. Ready to generate mesh', 'ready');
+
+            const stats = meshScanner.getStats();
+            console.log('📊 Final stats:', stats);
+        }
+
+        function generateMesh() {
+            console.log('🔷 Generating SOLID MESH...');
+
+            document.getElementById('generateMeshBtn').disabled = true;
+            setStatus('Generating solid mesh...', 'processing');
+
+            // Generate mesh (non-blocking)
+            setTimeout(() => {
+                const geometry = meshScanner.generateMesh();
+
+                if (geometry) {
+                    // Create mesh object
+                    currentMesh = meshScanner.createMeshObject(geometry, {
+                        vertexColors: true,
+                        wireframe: false
+                    });
+
+                    // Add to scene
+                    scene.add(currentMesh);
+
+                    // Update UI
+                    const vertexCount = geometry.attributes.position.count;
+                    const faceCount = geometry.index ? geometry.index.count / 3 : 0;
+
+                    document.getElementById('meshVertices').textContent = vertexCount.toLocaleString();
+                    document.getElementById('meshFaces').textContent = Math.floor(faceCount).toLocaleString();
+                    document.getElementById('exportBtn').disabled = false;
+
+                    setStatus('Solid mesh generated successfully!', 'complete');
+
+                    console.log('✅ SOLID MESH created!');
+                    console.log('📊 Vertices:', vertexCount.toLocaleString());
+                    console.log('📊 Faces:', Math.floor(faceCount).toLocaleString());
+                } else {
+                    setStatus('Failed to generate mesh', 'ready');
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    console.error('❌ Mesh generation failed');
+                }
+            }, 100);
+        }
+
+        function exportSTL() {
+            if (!currentMesh || !currentMesh.geometry) {
+                alert('No mesh to export!');
+                return;
+            }
+
+            meshScanner.exportToSTL(currentMesh.geometry, 'kinect_solid_mesh.stl');
+            setStatus('STL file exported!', 'complete');
+            console.log('💾 STL exported');
+        }
+
+        function clearScan() {
+            console.log('🗑️ Clearing scan...');
+
+            meshScanner.reset();
+
+            if (currentMesh) {
+                scene.remove(currentMesh);
+                currentMesh = null;
+            }
+
+            // Reset UI
+            document.getElementById('startScanBtn').disabled = false;
+            document.getElementById('stopScanBtn').disabled = true;
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('exportBtn').disabled = true;
+            document.getElementById('frameCount').textContent = '0';
+            document.getElementById('meshVertices').textContent = '0';
+            document.getElementById('meshFaces').textContent = '0';
+
+            setStatus('Cleared. Ready to scan', 'ready');
+        }
+
+        // === Settings ===
+        function toggleQuickMode() {
+            const checked = document.getElementById('quickModeCheckbox').checked;
+            meshScanner.setMode(checked);
+            console.log('⚙️ Mode:', checked ? 'Quick Mesh' : 'TSDF Fusion');
+        }
+
+        function updateMaxFrames(value) {
+            meshScanner.setMaxFrames(parseInt(value));
+            document.getElementById('maxFramesValue').textContent = value;
+            document.getElementById('maxFrames').textContent = value;
+            console.log('⚙️ Max frames:', value);
+        }
+
+        // === UI Helpers ===
+        function setStatus(text, type) {
+            const statusEl = document.getElementById('scanStatus');
+            statusEl.textContent = text;
+            statusEl.className = 'status-badge status-' + type;
+        }
+
+        // === Initialize on page load ===
+        window.addEventListener('load', function() {
+            console.log('🔵 Initializing Kinect Mesh Scanner...');
+            initViewer();
+            console.log('✅ Ready!');
+        });
+    </script>
+</body>
+</html>

@@ -316,46 +316,172 @@ class PointCloudProcessor {
     }
 
     /**
-     * Statistical Outlier Removal
-     * Removes points that are too far from their neighbors
+     * Enhanced Statistical Outlier Removal with Adaptive Parameters
+     * Uses spatial hashing for O(n) performance and adaptive thresholds
+     * Based on best practices from PCL and Open3D
      */
     statisticalOutlierRemoval(points, meanK = 20, stdDevMulThresh = 2.0) {
         if (points.length === 0) return points;
+        if (points.length < 10) return points; // Too few points to filter
 
-        const filteredPoints = [];
+        console.log('🔍 Enhanced SOR: Processing', points.length, 'points with k=', meanK, 'threshold=', stdDevMulThresh);
+
+        // Adaptive parameters based on point cloud density
+        const density = this.estimateDensity(points);
+        const adaptiveK = Math.max(10, Math.min(50, Math.floor(meanK * (1 + density))));
+        const adaptiveRadius = this.estimateSearchRadius(points, adaptiveK);
+
+        // Build spatial hash for O(1) neighbor lookup
+        const gridSize = adaptiveRadius * 0.5;
+        const grid = new Map();
+        
+        points.forEach((point, index) => {
+            const gx = Math.floor(point.x / gridSize);
+            const gy = Math.floor(point.y / gridSize);
+            const gz = Math.floor(point.z / gridSize);
+            const key = `${gx},${gy},${gz}`;
+            
+            if (!grid.has(key)) {
+                grid.set(key, []);
+            }
+            grid.get(key).push(index);
+        });
+
         const distances = [];
+        const pointIndices = [];
 
-        // Compute mean distance for each point
+        // Compute mean distance to k-nearest neighbors for each point using spatial hash
         for (let i = 0; i < points.length; i++) {
             const point = points[i];
-            const neighbors = this.findNeighbors(point, points, meanK);
-            
-            if (neighbors.length === 0) continue;
+            const gx = Math.floor(point.x / gridSize);
+            const gy = Math.floor(point.y / gridSize);
+            const gz = Math.floor(point.z / gridSize);
 
-            let meanDist = 0;
-            for (const neighbor of neighbors) {
-                meanDist += this.distance(point, neighbor);
+            // Search in neighboring cells
+            const neighbors = [];
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dz = -1; dz <= 1; dz++) {
+                        const key = `${gx + dx},${gy + dy},${gz + dz}`;
+                        const cellPoints = grid.get(key) || [];
+                        
+                        for (const idx of cellPoints) {
+                            if (idx === i) continue;
+                            const dist = this.distance(point, points[idx]);
+                            neighbors.push({ idx, dist });
+                        }
+                    }
+                }
             }
-            meanDist /= neighbors.length;
+
+            // Sort and take k nearest
+            neighbors.sort((a, b) => a.dist - b.dist);
+            const kNearest = neighbors.slice(0, Math.min(adaptiveK, neighbors.length));
+
+            if (kNearest.length === 0) continue;
+
+            // Compute mean distance to k nearest neighbors
+            const meanDist = kNearest.reduce((sum, n) => sum + n.dist, 0) / kNearest.length;
             distances.push(meanDist);
+            pointIndices.push(i);
         }
 
         if (distances.length === 0) return points;
 
-        // Compute global mean and std dev
+        // Compute global statistics
         const globalMean = distances.reduce((a, b) => a + b, 0) / distances.length;
         const variance = distances.reduce((sum, d) => sum + Math.pow(d - globalMean, 2), 0) / distances.length;
         const stdDev = Math.sqrt(variance);
         const threshold = globalMean + stdDevMulThresh * stdDev;
 
-        // Filter points
-        for (let i = 0; i < points.length; i++) {
+        // Filter points based on adaptive threshold
+        const filteredPoints = [];
+        for (let i = 0; i < pointIndices.length; i++) {
             if (distances[i] <= threshold) {
-                filteredPoints.push(points[i]);
+                filteredPoints.push(points[pointIndices[i]]);
             }
         }
 
-        return filteredPoints;
+        const removed = points.length - filteredPoints.length;
+        const removalRate = (removed / points.length * 100).toFixed(1);
+        console.log('✅ Enhanced SOR: Removed', removed, 'outliers (' + removalRate + '%)');
+
+        // Ensure we don't remove too many points (safety check)
+        if (filteredPoints.length < points.length * 0.1) {
+            console.warn('⚠️ SOR removed too many points, keeping original');
+            return points;
+        }
+
+        return filteredPoints.length > 0 ? filteredPoints : points;
+    }
+
+    /**
+     * Estimate point cloud density for adaptive parameters
+     */
+    estimateDensity(points) {
+        if (points.length < 10) return 1.0;
+
+        // Sample 100 random points and compute average nearest neighbor distance
+        const sampleSize = Math.min(100, points.length);
+        const step = Math.floor(points.length / sampleSize);
+        let totalDist = 0;
+        let count = 0;
+
+        for (let i = 0; i < points.length; i += step) {
+            const point = points[i];
+            let minDist = Infinity;
+
+            for (let j = 0; j < points.length; j++) {
+                if (i === j) continue;
+                const dist = this.distance(point, points[j]);
+                if (dist < minDist) minDist = dist;
+            }
+
+            if (minDist < Infinity) {
+                totalDist += minDist;
+                count++;
+            }
+        }
+
+        const avgDist = count > 0 ? totalDist / count : 0.02;
+        // Higher density = smaller average distance
+        // Normalize to 0-1 range (assuming typical range 0.01-0.05m)
+        return Math.max(0.5, Math.min(2.0, 0.02 / avgDist));
+    }
+
+    /**
+     * Estimate optimal search radius based on point cloud characteristics
+     */
+    estimateSearchRadius(points, k) {
+        if (points.length < k) return 0.05;
+
+        // Sample points and compute k-th nearest neighbor distance
+        const sampleSize = Math.min(50, points.length);
+        const step = Math.floor(points.length / sampleSize);
+        const kthDistances = [];
+
+        for (let i = 0; i < points.length; i += step) {
+            const point = points[i];
+            const distances = [];
+
+            for (let j = 0; j < points.length; j++) {
+                if (i === j) continue;
+                distances.push(this.distance(point, points[j]));
+            }
+
+            distances.sort((a, b) => a - b);
+            if (distances.length >= k) {
+                kthDistances.push(distances[k - 1]);
+            }
+        }
+
+        if (kthDistances.length === 0) return 0.05;
+
+        // Use median of k-th distances as search radius
+        kthDistances.sort((a, b) => a - b);
+        const median = kthDistances[Math.floor(kthDistances.length / 2)];
+
+        return Math.max(0.02, Math.min(0.1, median * 1.5));
     }
 
     /**
@@ -724,11 +850,15 @@ class PointCloudProcessor {
     }
 
     /**
-     * Fill holes in mesh by connecting boundary edges
+     * Advanced Hole Filling with Boundary Detection and Classification
+     * Implements multi-strategy hole filling based on hole size and geometry
+     * Based on best practices from MeshLab and CGAL
      */
     fillHoles(points, faces, edgeMap, grid, gridSize, maxDist) {
-        // Find boundary edges (edges that appear only once)
+        // Step 1: Detect and classify boundary edges
         const boundaryEdges = [];
+        const edgeToFaces = new Map(); // Track which faces use each edge
+        
         edgeMap.forEach((count, edgeKey) => {
             if (count === 1) {
                 const [i1, i2] = edgeKey.split(',').map(Number);
@@ -741,83 +871,256 @@ class PointCloudProcessor {
             return faces;
         }
 
-        console.log('🔧 Filling', boundaryEdges.length, 'boundary edges (holes)');
+        console.log('🔧 Advanced hole filling: Detected', boundaryEdges.length, 'boundary edges');
+
+        // Step 2: Group boundary edges into hole loops
+        const holeLoops = this.detectHoleLoops(boundaryEdges, points);
+        console.log('🔧 Detected', holeLoops.length, 'hole loops');
 
         const newFaces = [...faces];
-        const faceSet = new Set(faces.map(f => f.key || [f.indices[0], f.indices[1], f.indices[2]].sort((a, b) => a - b).join(',')));
+        const faceSet = new Set(faces.map(f => {
+            const indices = f.indices || f;
+            return indices.sort((a, b) => a - b).join(',');
+        }));
 
-        // For each boundary edge, try to find a third point to form a triangle
-        for (const [i1, i2] of boundaryEdges) {
-            const p1 = points[i1];
-            const p2 = points[i2];
-            
-            // Find nearby points that could close the hole
-            const gx1 = Math.floor(p1.x / gridSize);
-            const gy1 = Math.floor(p1.y / gridSize);
-            const gz1 = Math.floor(p1.z / gridSize);
-            
-            const gx2 = Math.floor(p2.x / gridSize);
-            const gy2 = Math.floor(p2.y / gridSize);
-            const gz2 = Math.floor(p2.z / gridSize);
-            
-            let bestPoint = -1;
-            let bestScore = Infinity;
-            
-            // Search in extended cells between the two edge points
-            const minGx = Math.min(gx1, gx2) - 2;
-            const maxGx = Math.max(gx1, gx2) + 2;
-            const minGy = Math.min(gy1, gy2) - 2;
-            const maxGy = Math.max(gy1, gy2) + 2;
-            const minGz = Math.min(gz1, gz2) - 2;
-            const maxGz = Math.max(gz1, gz2) + 2;
-            
-            for (let gx = minGx; gx <= maxGx; gx++) {
-                for (let gy = minGy; gy <= maxGy; gy++) {
-                    for (let gz = minGz; gz <= maxGz; gz++) {
-                        const key = `${gx},${gy},${gz}`;
-                        const cellPoints = grid.get(key) || [];
-                        
-                        for (const idx of cellPoints) {
-                            if (idx === i1 || idx === i2) continue;
-                            
-                            const p3 = points[idx];
-                            const dist1 = this.distance(p1, p3);
-                            const dist2 = this.distance(p2, p3);
-                            const dist12 = this.distance(p1, p2);
-                            
-                            // More lenient check for better hole filling
-                            if (dist1 <= maxDist * 1.5 && dist2 <= maxDist * 1.5 && dist1 + dist2 < dist12 * 3.0) {
-                                // Calculate triangle quality (prefer equilateral triangles)
-                                const avgDist = (dist1 + dist2 + dist12) / 3;
-                                const variance = (
-                                    Math.pow(dist1 - avgDist, 2) +
-                                    Math.pow(dist2 - avgDist, 2) +
-                                    Math.pow(dist12 - avgDist, 2)
-                                ) / 3;
-                                
-                                if (variance < bestScore) {
-                                    bestScore = variance;
-                                    bestPoint = idx;
-                                }
-                            }
-                        }
+        // Step 3: Fill each hole loop based on its size
+        for (const loop of holeLoops) {
+            if (loop.length < 3) continue; // Need at least 3 edges for a hole
+
+            const holeSize = this.estimateHoleSize(loop, points);
+            const numEdges = loop.length;
+
+            console.log('🔧 Filling hole with', numEdges, 'edges, estimated size:', holeSize.toFixed(4), 'm');
+
+            // Strategy 1: Small holes (< 10 edges) - Direct triangulation
+            if (numEdges < 10) {
+                const filled = this.fillSmallHole(loop, points, faceSet, grid, gridSize, maxDist);
+                filled.forEach(f => {
+                    if (!faceSet.has(f.key)) {
+                        faceSet.add(f.key);
+                        newFaces.push(f);
+                    }
+                });
+            }
+            // Strategy 2: Medium holes (10-50 edges) - Fan triangulation with quality check
+            else if (numEdges < 50) {
+                const filled = this.fillMediumHole(loop, points, faceSet, grid, gridSize, maxDist);
+                filled.forEach(f => {
+                    if (!faceSet.has(f.key)) {
+                        faceSet.add(f.key);
+                        newFaces.push(f);
+                    }
+                });
+            }
+            // Strategy 3: Large holes (> 50 edges) - Radial basis function approach
+            else {
+                const filled = this.fillLargeHole(loop, points, faceSet, grid, gridSize, maxDist);
+                filled.forEach(f => {
+                    if (!faceSet.has(f.key)) {
+                        faceSet.add(f.key);
+                        newFaces.push(f);
+                    }
+                });
+            }
+        }
+
+        const addedFaces = newFaces.length - faces.length;
+        console.log('✅ Advanced hole filling: Added', addedFaces, 'faces to fill holes');
+
+        return newFaces;
+    }
+
+    /**
+     * Detect hole loops from boundary edges
+     * Groups connected boundary edges into closed loops
+     */
+    detectHoleLoops(boundaryEdges, points) {
+        const loops = [];
+        const usedEdges = new Set();
+        const edgeMap = new Map(); // vertex -> connected edges
+
+        // Build edge connectivity map
+        boundaryEdges.forEach(([i1, i2], idx) => {
+            if (!edgeMap.has(i1)) edgeMap.set(i1, []);
+            if (!edgeMap.has(i2)) edgeMap.set(i2, []);
+            edgeMap.get(i1).push([i2, idx]);
+            edgeMap.get(i2).push([i1, idx]);
+        });
+
+        // Find loops by following connected edges
+        for (let i = 0; i < boundaryEdges.length; i++) {
+            if (usedEdges.has(i)) continue;
+
+            const loop = [];
+            let [currentVertex, nextVertex] = boundaryEdges[i];
+            let currentEdgeIdx = i;
+            const startVertex = currentVertex;
+
+            // Follow the loop
+            while (true) {
+                usedEdges.add(currentEdgeIdx);
+                loop.push([currentVertex, nextVertex]);
+
+                // Find next edge connected to nextVertex
+                const connectedEdges = edgeMap.get(nextVertex) || [];
+                let found = false;
+
+                for (const [connectedVertex, edgeIdx] of connectedEdges) {
+                    if (!usedEdges.has(edgeIdx) && connectedVertex !== currentVertex) {
+                        currentVertex = nextVertex;
+                        nextVertex = connectedVertex;
+                        currentEdgeIdx = edgeIdx;
+                        found = true;
+                        break;
                     }
                 }
+
+                if (!found || nextVertex === startVertex) break;
             }
-            
-            // Create triangle to fill hole
-            if (bestPoint !== -1) {
-                const triIndices = [i1, i2, bestPoint].sort((a, b) => a - b);
-                const faceKey = triIndices.join(',');
-                
-                if (!faceSet.has(faceKey)) {
-                    faceSet.add(faceKey);
-                    newFaces.push({ key: faceKey, indices: triIndices });
+
+            if (loop.length >= 3) {
+                loops.push(loop);
+            }
+        }
+
+        return loops;
+    }
+
+    /**
+     * Estimate hole size (diameter) for classification
+     */
+    estimateHoleSize(loop, points) {
+        let maxDist = 0;
+        for (let i = 0; i < loop.length; i++) {
+            for (let j = i + 1; j < loop.length; j++) {
+                const [v1, _] = loop[i];
+                const [v2, __] = loop[j];
+                const dist = this.distance(points[v1], points[v2]);
+                if (dist > maxDist) maxDist = dist;
+            }
+        }
+        return maxDist;
+    }
+
+    /**
+     * Fill small holes (< 10 edges) with direct triangulation
+     */
+    fillSmallHole(loop, points, faceSet, grid, gridSize, maxDist) {
+        const faces = [];
+        const vertices = loop.map(([v1, _]) => v1);
+
+        // Simple fan triangulation from first vertex
+        if (vertices.length >= 3) {
+            for (let i = 1; i < vertices.length - 1; i++) {
+                const tri = [vertices[0], vertices[i], vertices[i + 1]].sort((a, b) => a - b);
+                const key = tri.join(',');
+                if (!faceSet.has(key)) {
+                    faces.push({ key, indices: tri });
                 }
             }
         }
 
-        return newFaces;
+        return faces;
+    }
+
+    /**
+     * Fill medium holes (10-50 edges) with quality-aware triangulation
+     */
+    fillMediumHole(loop, points, faceSet, grid, gridSize, maxDist) {
+        const faces = [];
+        const vertices = loop.map(([v1, _]) => v1);
+
+        // Use ear clipping algorithm for better quality
+        // Simplified: use fan triangulation with quality checks
+        if (vertices.length >= 3) {
+            // Try multiple fan centers and choose best
+            let bestFaces = [];
+            let bestScore = Infinity;
+
+            for (let centerIdx = 0; centerIdx < Math.min(5, vertices.length); centerIdx++) {
+                const center = vertices[centerIdx];
+                const tempFaces = [];
+                let totalVariance = 0;
+
+                for (let i = 0; i < vertices.length; i++) {
+                    const next = (i + 1) % vertices.length;
+                    if (i === centerIdx || next === centerIdx) continue;
+
+                    const tri = [center, vertices[i], vertices[next]].sort((a, b) => a - b);
+                    const key = tri.join(',');
+                    
+                    // Calculate triangle quality
+                    const p1 = points[tri[0]];
+                    const p2 = points[tri[1]];
+                    const p3 = points[tri[2]];
+                    const d1 = this.distance(p1, p2);
+                    const d2 = this.distance(p2, p3);
+                    const d3 = this.distance(p3, p1);
+                    const avg = (d1 + d2 + d3) / 3;
+                    const variance = (Math.pow(d1 - avg, 2) + Math.pow(d2 - avg, 2) + Math.pow(d3 - avg, 2)) / 3;
+                    
+                    totalVariance += variance;
+                    tempFaces.push({ key, indices: tri });
+                }
+
+                if (totalVariance < bestScore) {
+                    bestScore = totalVariance;
+                    bestFaces = tempFaces;
+                }
+            }
+
+            faces.push(...bestFaces);
+        }
+
+        return faces;
+    }
+
+    /**
+     * Fill large holes (> 50 edges) using radial basis function approach
+     * Simplified: use adaptive fan triangulation with extended search
+     */
+    fillLargeHole(loop, points, faceSet, grid, gridSize, maxDist) {
+        const faces = [];
+        const vertices = loop.map(([v1, _]) => v1);
+
+        // For large holes, use centroid-based approach
+        // Calculate centroid of hole boundary
+        let centroid = { x: 0, y: 0, z: 0 };
+        vertices.forEach(v => {
+            const p = points[v];
+            centroid.x += p.x;
+            centroid.y += p.y;
+            centroid.z += p.z;
+        });
+        centroid.x /= vertices.length;
+        centroid.y /= vertices.length;
+        centroid.z /= vertices.length;
+
+        // Find closest point to centroid (or create virtual point)
+        let closestVertex = vertices[0];
+        let minDist = Infinity;
+        vertices.forEach(v => {
+            const p = points[v];
+            const dist = this.distance(p, centroid);
+            if (dist < minDist) {
+                minDist = dist;
+                closestVertex = v;
+            }
+        });
+
+        // Fan triangulation from closest vertex to centroid
+        for (let i = 0; i < vertices.length; i++) {
+            const next = (i + 1) % vertices.length;
+            if (vertices[i] === closestVertex || vertices[next] === closestVertex) continue;
+
+            const tri = [closestVertex, vertices[i], vertices[next]].sort((a, b) => a - b);
+            const key = tri.join(',');
+            if (!faceSet.has(key)) {
+                faces.push({ key, indices: tri });
+            }
+        }
+
+        return faces;
     }
 
     /**

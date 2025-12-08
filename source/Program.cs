@@ -399,6 +399,30 @@ namespace KinectServer
                     {
                         if (dFrame != null)
                         {
+                            try
+                            {
+                                // Serialize depth frame to JPEG image
+                                byte[] depthImage = dFrame.Serialize();
+                                if (depthImage != null && depthImage.Length > 0)
+                                {
+                                    if (DateTime.Now.Millisecond % 1000 < 50)
+                                    {
+                                        Console.WriteLine("[DEPTH] Sending depth image (" + depthImage.Length + " bytes)");
+                                    }
+                                    
+                                    foreach (var socket in _clients)
+                                    {
+                                        if (socket != null && socket.IsAvailable)
+                                        {
+                                            socket.Send(depthImage);
+                                        }
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("[DEPTH] ❌ Error sending depth image: " + ex.Message);
+                            }
                         }
                     }
                     break;

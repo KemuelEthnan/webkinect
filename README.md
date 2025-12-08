@@ -206,3 +206,4 @@ Saat menjalankan server, console akan menampilkan log detail:
 
 - Project uses a MIT license that allow for commercial usage of the platform without any cost.
 - The license is available on the project GitHub page
+
