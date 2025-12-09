@@ -4,7 +4,9 @@
       "Bash(where:*)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/amd64/MSBuild.exe\" KinectServer.sln /p:Configuration=Debug /t:Rebuild /v:minimal)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/amd64/MSBuild.exe\" \"KinectServer.sln\" \"/p:Configuration=Debug\" \"/t:Rebuild\" \"/v:minimal\")",
-      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" KinectServer.csproj /property:Configuration=Debug /target:Rebuild /verbosity:minimal)"
+      "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" KinectServer.csproj /property:Configuration=Debug /target:Rebuild /verbosity:minimal)",
+      "Bash(python3:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

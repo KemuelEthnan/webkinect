@@ -663,16 +663,16 @@
                             <div class="slider-control">
                                 <label style="color: #95a5a6; font-size: 12px;">
                                     <span>Max Points per Frame</span>
-                                    <span id="maxPointsValue">20000</span>
+                                    <span id="maxPointsValue">50000</span>
                                 </label>
-                                <input type="range" id="maxPointsSlider" min="1000" max="100000" value="20000" step="1000" onchange="document.getElementById('maxPointsValue').textContent = this.value">
+                                <input type="range" id="maxPointsSlider" min="1000" max="200000" value="50000" step="1000" onchange="document.getElementById('maxPointsValue').textContent = this.value">
                             </div>
                             <div class="slider-control">
                                 <label style="color: #95a5a6; font-size: 12px;">
                                     <span>Mesh Resolution</span>
-                                    <span id="meshResolutionValue">0.05</span>
+                                    <span id="meshResolutionValue">0.02</span>
                                 </label>
-                                <input type="range" id="meshResolutionSlider" min="0.01" max="0.1" value="0.05" step="0.01" onchange="document.getElementById('meshResolutionValue').textContent = this.value">
+                                <input type="range" id="meshResolutionSlider" min="0.005" max="0.1" value="0.02" step="0.005" onchange="document.getElementById('meshResolutionValue').textContent = this.value">
                             </div>
                             <div class="slider-control">
                                 <label style="color: #95a5a6; font-size: 12px;">
@@ -788,10 +788,10 @@
         var frameCount = 0;
         var scanTimer = null;
         var scanStartTime = 0;
-        var scanDuration = 6000; // Auto-stop after 6 seconds (5-7 detik untuk banyak frame)
+        var scanDuration = 10000; // Auto-stop after 10 seconds (lebih banyak frame untuk hasil lengkap)
         var dataReceivedDuringScan = 0;
         var pointCloudDataReceived = 0;
-        var maxTotalPoints = 500000; // Limit to 500k points for high-quality scans
+        var maxTotalPoints = 2000000; // Limit to 2M points for ultra high-quality scans
         var autoCaptureTimer = null;
         
         // Multi-phase scanning (depan dan belakang)
@@ -1521,10 +1521,11 @@
             if (newPoints.length > 100) {
                 try {
                     // Filter berdasarkan depth - seperti depth map dengan warna
-                    // Objek dekat (0.85-2.5m) = anggota tubuh, background jauh (>2.5m) = dihilangkan
+                    // Objek dekat (0.5-3.5m) = objek target, background sangat jauh (>3.5m) = dihilangkan
                     humanBodyPoints = filterDepthBasedBodyParts(newPoints);
-                    // If filter removed too many points (>80%), use original points
-                    if (humanBodyPoints.length < newPoints.length * 0.2) {
+                    // If filter removed too many points (>90%), use original points
+                    // Threshold lebih tinggi untuk mempertahankan lebih banyak points
+                    if (humanBodyPoints.length < newPoints.length * 0.1) {
                         console.warn('⚠️ Filter too aggressive, using original points');
                         humanBodyPoints = newPoints;
                     }
@@ -1776,42 +1777,30 @@
                 console.warn('Scene not initialized');
                 return;
             }
-            
+
             const oldPointCloud = scene.getObjectByName('pointCloud');
             if (oldPointCloud) {
                 scene.remove(oldPointCloud);
             }
-            
+
             if (pointCloud.length === 0) {
                 console.log('No points to display');
                 return;
             }
-            
+
             console.log('Updating point cloud display with', pointCloud.length, 'points');
-            
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(pointCloud.length * 3);
-            const colors = new Float32Array(pointCloud.length * 3);
-            
-            // Calculate bounds for camera positioning
+
+            // PASS 1: Calculate raw bounds and center from Kinect coordinates
             let minX = Infinity, maxX = -Infinity;
             let minY = Infinity, maxY = -Infinity;
             let minZ = Infinity, maxZ = -Infinity;
-            
+
             for (let i = 0; i < pointCloud.length; i++) {
                 const point = pointCloud[i];
                 const x = point.x || 0;
                 const y = point.y || 0;
                 const z = point.z || 0;
-                
-                positions[i * 3] = x;
-                positions[i * 3 + 1] = y;
-                positions[i * 3 + 2] = z;
-                
-                colors[i * 3] = (point.r || 128) / 255;
-                colors[i * 3 + 1] = (point.g || 128) / 255;
-                colors[i * 3 + 2] = (point.b || 128) / 255;
-                
+
                 minX = Math.min(minX, x);
                 maxX = Math.max(maxX, x);
                 minY = Math.min(minY, y);
@@ -1819,63 +1808,118 @@
                 minZ = Math.min(minZ, z);
                 maxZ = Math.max(maxZ, z);
             }
-            
-            console.log('Point cloud bounds:', {
+
+            console.log('Point cloud RAW bounds (Kinect coordinates):', {
                 x: [minX, maxX],
                 y: [minY, maxY],
                 z: [minZ, maxZ]
             });
-            
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            
-            const material = new THREE.PointsMaterial({
-                size: 0.02, // Increased size for better visibility
-                vertexColors: true,
-                sizeAttenuation: false
-            });
-            
-            const pointsObj = new THREE.Points(geometry, material);
-            pointsObj.name = 'pointCloud';
-            scene.add(pointsObj);
-            
-            // Validasi ukuran objek: tidak boleh lebih besar dari 350mm (0.35m)
-            const maxObjectSize = window.maxObjectSize || 0.35; // 350mm
+
+            // Calculate center and size
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const centerZ = (minZ + maxZ) / 2;
             const sizeX = maxX - minX;
             const sizeY = maxY - minY;
             const sizeZ = maxZ - minZ;
             const maxDim = Math.max(sizeX, sizeY, sizeZ);
-            
+
+            // Calculate scale factor to fit within canvas (max 350mm)
+            const canvasSize = window.canvasSize || 0.4; // 400mm canvas
+            const maxObjectSize = window.maxObjectSize || 0.35; // 350mm max object
             let scaleFactor = 1.0;
+
             if (maxDim > maxObjectSize) {
                 scaleFactor = maxObjectSize / maxDim;
                 console.warn('⚠️ Point cloud terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm (scale: ' + scaleFactor.toFixed(3) + ')');
-                pointsObj.scale.set(scaleFactor, scaleFactor, scaleFactor);
             }
-            
-            // Posisikan objek di atas grid (Y = 0 atau sedikit di atas)
-            // Hitung offset Y agar objek berada di atas grid, bukan mengambang
-            const yOffset = -minY; // Offset untuk memindahkan objek ke Y = 0 (di atas grid)
-            const centerX = (minX + maxX) / 2;
-            const centerZ = (minZ + maxZ) / 2;
-            
-            // Apply position dengan offset agar objek di atas grid
-            // Pastikan objek selalu berada di atas grid (Y >= 0)
-            const finalY = Math.max(0, (window.objectPosition ? window.objectPosition.y : 0) + yOffset);
-            pointsObj.position.set(
-                (window.objectPosition ? window.objectPosition.x : 0) - centerX, // Center X
-                finalY, // Di atas grid (Y >= 0)
-                (window.objectPosition ? window.objectPosition.z : 0) - centerZ  // Center Z
-            );
-            pointsObj.updateMatrixWorld(); // Update matrix setelah positioning
-            
-            // Bounding box dihilangkan - objek pure di atas kanvas
-            
-            // Center and fit the point cloud immediately after adding
-            // This ensures it's always visible
-            setTimeout(() => {
-                centerModel();
-            }, 50);
+
+            console.log('📊 Transformation params:', {
+                center: [centerX, centerY, centerZ],
+                size: [sizeX, sizeY, sizeZ],
+                scaleFactor: scaleFactor
+            });
+
+            // PASS 2: Transform coordinates to canvas space
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(pointCloud.length * 3);
+            const colors = new Float32Array(pointCloud.length * 3);
+
+            // Track transformed bounds for verification
+            let transformedMinY = Infinity;
+            let transformedMaxY = -Infinity;
+
+            for (let i = 0; i < pointCloud.length; i++) {
+                const point = pointCloud[i];
+
+                // Get raw Kinect coordinates
+                const rawX = point.x || 0;
+                const rawY = point.y || 0;
+                const rawZ = point.z || 0;
+
+                // Transform to canvas space:
+                // 1. Translate to center at origin
+                // 2. Apply scale factor
+                // 3. Position so bottom of object is at Y=0 (on the canvas grid)
+                const x = (rawX - centerX) * scaleFactor;
+                const y = (rawY - minY) * scaleFactor; // minY becomes 0 (on grid)
+                const z = (rawZ - centerZ) * scaleFactor;
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                colors[i * 3] = (point.r || 128) / 255;
+                colors[i * 3 + 1] = (point.g || 128) / 255;
+                colors[i * 3 + 2] = (point.b || 128) / 255;
+
+                transformedMinY = Math.min(transformedMinY, y);
+                transformedMaxY = Math.max(transformedMaxY, y);
+            }
+
+            console.log('Point cloud TRANSFORMED bounds (Canvas coordinates):', {
+                yRange: [transformedMinY, transformedMaxY],
+                expectedHeight: (sizeY * scaleFactor).toFixed(3) + 'm'
+            });
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({
+                size: 0.003, // Ukuran point yang sesuai untuk detail tinggi
+                vertexColors: true,
+                sizeAttenuation: true // Enable size attenuation for depth perception
+            });
+
+            const pointsObj = new THREE.Points(geometry, material);
+            pointsObj.name = 'pointCloud';
+
+            // Objek sudah di-transform, tidak perlu scaling atau positioning tambahan
+            // Langsung add ke scene di posisi origin
+            pointsObj.position.set(0, 0, 0);
+            scene.add(pointsObj);
+
+            console.log('✅ Point cloud added to scene at origin (0,0,0)');
+            console.log('📏 Object dimensions: ' +
+                (sizeX * scaleFactor * 1000).toFixed(0) + 'mm x ' +
+                (sizeY * scaleFactor * 1000).toFixed(0) + 'mm x ' +
+                (sizeZ * scaleFactor * 1000).toFixed(0) + 'mm');
+
+            // Posisikan kamera untuk melihat objek dengan baik
+            // Objek berada di origin dengan tinggi (sizeY * scaleFactor)
+            const objectHeight = sizeY * scaleFactor;
+            const objectWidth = Math.max(sizeX * scaleFactor, sizeZ * scaleFactor);
+
+            // Hitung jarak kamera optimal
+            const fov = camera.fov * (Math.PI / 180);
+            const distance = Math.max(objectWidth, objectHeight) / (2 * Math.tan(fov / 2)) * 1.5;
+
+            // Posisikan kamera di depan objek, sedikit di atas untuk perspektif yang baik
+            camera.position.set(0, objectHeight * 0.5, distance);
+            camera.lookAt(0, objectHeight * 0.5, 0);
+            camera.updateProjectionMatrix();
+
+            console.log('📷 Camera positioned at:', camera.position, 'looking at:', new THREE.Vector3(0, objectHeight * 0.5, 0));
         }
         
         /**
@@ -2266,7 +2310,7 @@
         /**
          * Merge two point clouds with overlap removal using voxel-based deduplication
          */
-        function mergeWithOverlapRemoval(points1, points2, voxelSize = 0.02) {
+        function mergeWithOverlapRemoval(points1, points2, voxelSize = 0.01) {
             const merged = [...points1];
             const voxelMap = new Map();
             
@@ -2496,7 +2540,7 @@
             // Gunakan filter depth-based untuk menghilangkan background
             meshPoints = filterDepthBasedBodyParts(meshPoints);
             console.log('✅ Background filter: ' + beforeFilter + ' → ' + meshPoints.length + ' points (background dihilangkan)');
-            
+
             if (meshPoints.length < 100) {
                 console.warn('⚠️ Too few points after filtering, using less aggressive filter');
                 // Tetap gunakan depth-based filter (tapi dengan range lebih luas)
@@ -2508,6 +2552,66 @@
                     meshPoints = lessAggressiveFiltered;
                 }
             }
+
+            // === TRANSFORM MESH POINTS TO CANVAS SPACE (sama seperti point cloud) ===
+            // Calculate RAW bounds from Kinect coordinates
+            let rawMinX = Infinity, rawMaxX = -Infinity;
+            let rawMinY = Infinity, rawMaxY = -Infinity;
+            let rawMinZ = Infinity, rawMaxZ = -Infinity;
+
+            for (let i = 0; i < meshPoints.length; i++) {
+                const p = meshPoints[i];
+                rawMinX = Math.min(rawMinX, p.x || 0);
+                rawMaxX = Math.max(rawMaxX, p.x || 0);
+                rawMinY = Math.min(rawMinY, p.y || 0);
+                rawMaxY = Math.max(rawMaxY, p.y || 0);
+                rawMinZ = Math.min(rawMinZ, p.z || 0);
+                rawMaxZ = Math.max(rawMaxZ, p.z || 0);
+            }
+
+            console.log('Mesh RAW bounds (Kinect):', {
+                x: [rawMinX, rawMaxX],
+                y: [rawMinY, rawMaxY],
+                z: [rawMinZ, rawMaxZ]
+            });
+
+            // Calculate center and size
+            const centerX = (rawMinX + rawMaxX) / 2;
+            const centerY = (rawMinY + rawMaxY) / 2;
+            const centerZ = (rawMinZ + rawMaxZ) / 2;
+            const sizeX = rawMaxX - rawMinX;
+            const sizeY = rawMaxY - rawMinY;
+            const sizeZ = rawMaxZ - rawMinZ;
+            const maxDim = Math.max(sizeX, sizeY, sizeZ);
+
+            // Calculate scale factor to fit within canvas (max 350mm)
+            const maxObjectSize = window.maxObjectSize || 0.35;
+            let scaleFactor = 1.0;
+            if (maxDim > maxObjectSize) {
+                scaleFactor = maxObjectSize / maxDim;
+                console.log('⚠️ Mesh terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm');
+            }
+
+            // Transform mesh points to canvas space
+            const transformedMeshPoints = meshPoints.map(p => {
+                return {
+                    x: (p.x - centerX) * scaleFactor,
+                    y: (p.y - rawMinY) * scaleFactor, // minY becomes 0 (on grid)
+                    z: (p.z - centerZ) * scaleFactor,
+                    r: p.r,
+                    g: p.g,
+                    b: p.b
+                };
+            });
+
+            console.log('✅ Mesh points transformed to canvas space:', {
+                originalSize: [sizeX, sizeY, sizeZ],
+                scaledSize: [sizeX * scaleFactor, sizeY * scaleFactor, sizeZ * scaleFactor],
+                scaleFactor: scaleFactor
+            });
+
+            // Use transformed points for mesh generation
+            meshPoints = transformedMeshPoints;
 
             document.getElementById('generateWatertightBtn').disabled = true;
             document.getElementById('generateWatertightBtn').textContent = 'Generating Watertight... (' + meshPoints.length.toLocaleString() + ' pts)';
@@ -2565,38 +2669,14 @@
 
                                         if (mesh) {
                                             mesh.name = 'mesh';
-                                            scene.add(mesh);
-                                            console.log('✅ Mesh added to scene successfully');
 
-                                            // Calculate bounds from meshPoints untuk positioning
-                                            let meshMinX = Infinity, meshMaxX = -Infinity;
-                                            let meshMinY = Infinity, meshMaxY = -Infinity;
-                                            let meshMinZ = Infinity, meshMaxZ = -Infinity;
-                                            
-                                            for (let i = 0; i < meshPoints.length; i++) {
-                                                const p = meshPoints[i];
-                                                meshMinX = Math.min(meshMinX, p.x || 0);
-                                                meshMaxX = Math.max(meshMaxX, p.x || 0);
-                                                meshMinY = Math.min(meshMinY, p.y || 0);
-                                                meshMaxY = Math.max(meshMaxY, p.y || 0);
-                                                meshMinZ = Math.min(meshMinZ, p.z || 0);
-                                                meshMaxZ = Math.max(meshMaxZ, p.z || 0);
-                                            }
-                                            
-                                            // Posisikan mesh di atas grid (Y = 0 atau sedikit di atas)
-                                            // Center X dan Z, posisikan Y di atas grid
-                                            const meshCenterX = (meshMinX + meshMaxX) / 2;
-                                            const meshCenterZ = (meshMinZ + meshMaxZ) / 2;
-                                            const meshYOffset = -meshMinY; // Offset untuk memindahkan mesh ke Y = 0 (di atas grid)
-                                            
-                                            // Apply position dengan offset agar mesh di atas grid
-                                            // Pastikan mesh selalu berada di atas grid (Y >= 0)
-                                            const finalY = Math.max(0, (window.objectPosition ? window.objectPosition.y : 0) + meshYOffset);
-                                            mesh.position.set(
-                                                (window.objectPosition ? window.objectPosition.x : 0) - meshCenterX, // Center X
-                                                finalY, // Di atas grid (Y >= 0)
-                                                (window.objectPosition ? window.objectPosition.z : 0) - meshCenterZ  // Center Z
-                                            );
+                                            // Mesh sudah di-transform ke canvas space, langsung posisikan di origin
+                                            mesh.position.set(0, 0, 0);
+                                            mesh.scale.set(1, 1, 1);
+                                            mesh.rotation.set(0, 0, 0);
+
+                                            scene.add(mesh);
+                                            console.log('✅ Mesh added to scene at origin (already transformed to canvas space)');
 
                                             // Force update matrix before centering
                                             mesh.updateMatrixWorld();
@@ -2675,17 +2755,17 @@
             }
             
             console.log('🔧 Creating watertight mesh from', points.length, 'points with conservative hole filling...');
-            
-            // Gunakan resolution yang lebih besar untuk mesh yang lebih stabil
+
+            // Gunakan resolution dari slider user untuk detail maksimal
             const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
-            // Gunakan resolution yang sedikit lebih besar untuk stabilitas
-            const stableResolution = Math.max(resolution, 0.08); // Minimum 8cm untuk stabilitas
-            
-            // Limit points untuk mencegah freeze, tapi jangan terlalu banyak downsampling
+            // Gunakan resolution user langsung tanpa memaksakan minimum yang terlalu besar
+            const stableResolution = Math.max(resolution, 0.02); // Minimum 2cm untuk stabilitas
+
+            // Limit points untuk mencegah freeze, tapi tingkatkan batas untuk lebih banyak detail
             let pointsForMesh = points;
-            if (points.length > 30000) {
-                console.log('⚠️ Too many points for mesh (' + points.length + '), downsampling to 30000');
-                const skip = Math.ceil(points.length / 30000);
+            if (points.length > 100000) {
+                console.log('⚠️ Too many points for mesh (' + points.length + '), downsampling to 100000');
+                const skip = Math.ceil(points.length / 100000);
                 pointsForMesh = [];
                 for (let i = 0; i < points.length; i += skip) {
                     pointsForMesh.push(points[i]);
@@ -3713,17 +3793,20 @@
         
         function centerModel() {
             if (!scene || !camera) return;
-            
+
             // Get all objects that should be centered (point cloud or mesh)
             const pointCloudObj = scene.getObjectByName('pointCloud');
             const meshObj = scene.getObjectByName('mesh');
-            
+
             const objectsToCenter = [];
             if (pointCloudObj && pointCloudObj.visible) objectsToCenter.push(pointCloudObj);
             if (meshObj && meshObj.visible) objectsToCenter.push(meshObj);
-            
+
             if (objectsToCenter.length === 0) return;
-            
+
+            // CATATAN: Point cloud sudah di-transform di updatePointCloudDisplay()
+            // Fungsi ini hanya perlu mengatur kamera untuk melihat objek yang sudah ada
+
             // Get points for orientation calculation
             let pointsForAlignment = [];
             if (pointCloudObj && pointCloud.length > 0) {
@@ -3742,90 +3825,40 @@
                 }
             }
             
-            // DISABLED: Auto-rotation to preserve original landscape orientation
-            // Uncomment below to enable auto-rotation if needed
-            // if (pointsForAlignment.length > 0) {
-            //     objectsToCenter.forEach(obj => {
-            //         alignObjectUpright(obj, pointsForAlignment);
-            //     });
-            // }
-            
-            // Calculate bounding box of all objects
+            // DISABLED: Auto-rotation and object repositioning
+            // Objek sudah di-transform dengan benar di updatePointCloudDisplay()
+            // Fungsi ini sekarang HANYA mengatur kamera, tidak mengubah posisi/scale objek
+
+            // Calculate bounding box of all objects (as-is, tanpa diubah)
             const box = new THREE.Box3();
             objectsToCenter.forEach(obj => {
                 obj.updateMatrixWorld();
                 box.expandByObject(obj);
             });
-            
+
             if (box.isEmpty()) return;
-            
+
             // Calculate center and size
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
             const maxDim = Math.max(size.x, size.y, size.z);
-            
-            // Validasi ukuran objek: tidak boleh lebih besar dari 350mm (0.35m)
-            const maxObjectSize = window.maxObjectSize || 0.35; // 350mm
-            let scaleFactor = 1.0;
-            
-            if (maxDim > maxObjectSize) {
-                scaleFactor = maxObjectSize / maxDim;
-                console.warn('⚠️ Objek terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm (scale: ' + scaleFactor.toFixed(3) + ')');
-                
-                // Apply scale to all objects
-                objectsToCenter.forEach(obj => {
-                    if (!obj.userData.originalScale) {
-                        obj.userData.originalScale = obj.scale.clone();
-                    }
-                    obj.scale.set(
-                        obj.userData.originalScale.x * scaleFactor,
-                        obj.userData.originalScale.y * scaleFactor,
-                        obj.userData.originalScale.z * scaleFactor
-                    );
-                });
-                
-                // Recalculate box after scaling
-                box.setFromObject(objectsToCenter[0]);
-                const newSize = box.getSize(new THREE.Vector3());
-                const newMaxDim = Math.max(newSize.x, newSize.y, newSize.z);
-                console.log('✅ Objek di-scale:', {
-                    original: (maxDim * 1000).toFixed(0) + 'mm',
-                    scaled: (newMaxDim * 1000).toFixed(0) + 'mm',
-                    scaleFactor: scaleFactor.toFixed(3)
-                });
-            }
-            
-            // Posisikan objek di atas grid (Y = 0 atau sedikit di atas)
-            // Hitung offset Y agar objek berada di atas grid, bukan mengambang
-            const boxMin = box.min;
-            // Pastikan objek berada di atas grid (Y >= 0)
-            // Jika objek memiliki bagian negatif, geser ke atas
-            const yOffset = -boxMin.y; // Offset untuk memindahkan objek ke Y = 0 (di atas grid)
-            
-            // Center all objects at origin (but preserve manual position offset)
-            // X dan Z di-center, Y diposisikan di atas grid
-            const offset = center.clone().negate();
-            offset.y = yOffset; // Set Y offset agar objek di atas grid
-            
-            objectsToCenter.forEach(obj => {
-                // Apply centering offset, then add manual position
-                // Pastikan objek selalu di atas grid (Y >= 0)
-                const finalY = Math.max(0, offset.y + (window.objectPosition ? window.objectPosition.y : 0));
-                obj.position.set(
-                    offset.x + (window.objectPosition ? window.objectPosition.x : 0),
-                    finalY, // Pastikan Y >= 0 (di atas grid)
-                    offset.z + (window.objectPosition ? window.objectPosition.z : 0)
-                );
-                obj.updateMatrixWorld(); // Update matrix setelah positioning
+
+            console.log('📏 centerModel() - Object info:', {
+                center: center,
+                size: size,
+                maxDim: (maxDim * 1000).toFixed(0) + 'mm'
             });
-            
+
+            // TIDAK ada scaling atau positioning - objek sudah benar
+            // Hanya adjust kamera untuk melihat objek dengan baik
+
             // Fit camera to view the object properly
             if (maxDim > 0) {
                 // Get canvas dimensions
                 const container = document.getElementById('viewer');
                 const width = container ? container.clientWidth : 800;
                 const height = container ? container.clientHeight : 600;
-                
+
                 // Calculate distance needed to fit object in view
                 // Use FOV and object size to calculate optimal distance
                 const fov = camera.fov * (Math.PI / 180); // Convert to radians
@@ -3833,27 +3866,28 @@
                     maxDim / (2 * Math.tan(fov / 2)), // Fit width
                     maxDim / (2 * Math.tan(fov / 2) * (height / width)) // Fit height
                 );
-                
-                // Add some padding (20% extra space around object)
-                const distanceWithPadding = distance * 1.2;
-                
-                // Position camera to view the centered object
-                // Objek sudah di-center di origin (0, 0, 0) dan di atas grid (Y >= 0)
-                // Posisikan camera di depan dan sedikit di atas untuk melihat objek dengan jelas
-                const cameraY = Math.max(0, size.y * 0.3); // Slight offset upward (30% of height), minimal Y = 0
+
+                // Add some padding (50% extra space around object for better view)
+                const distanceWithPadding = distance * 1.5;
+
+                // Position camera to view the object
+                // Objek sudah berada di origin dengan Y=0 sebagai base
+                const lookAtY = Math.max(0, size.y * 0.5); // Look at tengah objek
+                const cameraY = Math.max(0, size.y * 0.4); // Camera sedikit di bawah tengah untuk perspektif yang baik
+
                 camera.position.set(0, cameraY, distanceWithPadding);
-                camera.lookAt(0, Math.max(0, size.y * 0.1), 0); // Look at sedikit di atas grid (10% dari tinggi objek)
+                camera.lookAt(0, lookAtY, 0);
                 camera.updateProjectionMatrix();
-                
-                console.log('📷 Camera positioned:', {
+
+                console.log('📷 Camera adjusted:', {
                     position: camera.position,
-                    lookAt: new THREE.Vector3(0, Math.max(0, size.y * 0.1), 0),
+                    lookAt: new THREE.Vector3(0, lookAtY, 0),
                     objectSize: size,
-                    distance: distanceWithPadding
+                    distance: distanceWithPadding.toFixed(3) + 'm'
                 });
             }
-            
-            console.log('✅ Model centered, aligned upright, and fitted to view. Size:', size, 'Center:', center);
+
+            console.log('✅ Camera adjusted to view object. Size:', size);
         }
         
         /**
@@ -4031,21 +4065,21 @@
          */
         function filterDepthBasedBodyParts(points) {
             if (points.length === 0) return points;
-            
+
             console.log('📷 Filtering body parts using depth camera from', points.length, 'points...');
-            
-            // Step 1: Filter by depth range untuk anggota tubuh (0.85m to 2.5m - optimal untuk anggota tubuh)
-            // Background biasanya lebih jauh dari 2.5m - HILANGKAN SEMUA BACKGROUND
+
+            // Step 1: Filter by depth range dengan range yang lebih luas untuk menangkap lebih banyak detail
+            // Background biasanya lebih jauh dari 3.5m - HILANGKAN HANYA BACKGROUND YANG SANGAT JAUH
             const bodyPartsFiltered = points.filter(p => {
                 const dist = Math.abs(p.z);
-                // Range optimal untuk anggota tubuh: 0.85m - 2.5m
-                // Background biasanya > 2.5m, jadi dihilangkan SEMUA
-                // Juga filter berdasarkan Y position - background biasanya di bawah atau terlalu tinggi
+                // Range lebih luas untuk menangkap semua bagian objek: 0.5m - 3.5m
+                // Background yang sangat jauh (> 3.5m) dihilangkan
+                // Filter Y position dengan range yang lebih luas
                 const yPos = p.y || 0;
-                // Hanya ambil objek di range Y yang wajar untuk anggota tubuh (tidak terlalu rendah/tidak terlalu tinggi)
-                return dist >= 0.85 && dist <= 2.5 && yPos >= -1.0 && yPos <= 1.5;
+                // Range Y yang lebih luas untuk menangkap semua bagian objek
+                return dist >= 0.5 && dist <= 3.5 && yPos >= -1.5 && yPos <= 2.0;
             });
-            
+
             if (bodyPartsFiltered.length === 0) {
                 console.warn('⚠️ No points in body parts depth range, using all points');
                 return points;
@@ -4087,20 +4121,22 @@
             const sortedDistances = [...distances].sort((a, b) => a - b);
             const medianDist = sortedDistances[Math.floor(sortedDistances.length / 2)];
             
-            // Keep points within 2.5x median distance (main cluster = anggota tubuh)
-            const threshold = medianDist * 2.5;
+            // Keep points within 3.0x median distance (main cluster = anggota tubuh)
+            // Threshold lebih lebar untuk menangkap lebih banyak detail
+            const threshold = medianDist * 3.0;
             const filtered = bodyPartsFiltered.filter((p, i) => {
                 return distances[i] <= threshold;
             });
             
             console.log('✅ Depth-based body parts filter:', points.length, '→', filtered.length, 'points (removed', (points.length - filtered.length), 'background points)');
-            
-            // If filter removed too many points (>70%), return depth-filtered only
-            if (filtered.length < points.length * 0.3) {
+
+            // If filter removed too many points (>90%), return depth-filtered only
+            // Threshold lebih tinggi untuk mempertahankan lebih banyak filtering
+            if (filtered.length < points.length * 0.1) {
                 console.warn('⚠️ Filter too aggressive, using depth-filtered points only');
                 return bodyPartsFiltered;
             }
-            
+
             return filtered;
         }
         
@@ -4111,12 +4147,12 @@
          */
         function removeDuplicatePoints(newPoints, existingPoints) {
             if (newPoints.length === 0) return newPoints;
-            
+
             console.log('🔍 Removing duplicate points using voxel-based deduplication...');
-            
+
             // Use voxel-based approach: each voxel can only contain one point
             // This is more effective than distance-based for preventing layering
-            const voxelSize = 0.02; // 2cm voxels - smaller for better precision
+            const voxelSize = 0.01; // 1cm voxels - balance antara detail dan jumlah points
             const voxelMap = new Map();
             
             // Build voxel map from existing points

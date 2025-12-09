@@ -471,7 +471,50 @@
             // Initialize depth-to-mesh converter
             if (typeof DepthToMeshConverter !== 'undefined') {
                 depthMeshConverter = new DepthToMeshConverter();
-                console.log('✅ DepthToMeshConverter initialized');
+
+                // MONKEY PATCH: Fix hard-coded euclidean distance filtering
+                // Original uses: Math.sqrt(x²+y²+z²) with range 0.85-2.5m (WRONG for Z-depth!)
+                // Fixed to use: Math.abs(z) with very wide range (user controls via sliders)
+                const originalCreateDepthMap = depthMeshConverter.createDepthMap.bind(depthMeshConverter);
+                depthMeshConverter.createDepthMap = function(points, width, height) {
+                    const depthMap = [];
+                    const mapWidth = width || 320;
+                    const mapHeight = height || 240;
+
+                    // Initialize grid
+                    for (let y = 0; y < mapHeight; y++) {
+                        depthMap[y] = [];
+                        for (let x = 0; x < mapWidth; x++) {
+                            depthMap[y][x] = null;
+                        }
+                    }
+
+                    // Fill grid with point data - FIXED FILTERING!
+                    for (let i = 0; i < points.length; i++) {
+                        const p = points[i];
+
+                        // FIX: Use Z-depth only (NOT euclidean distance!)
+                        const z = Math.abs(p.z);
+                        if (z <= 0 || z < 0.3 || z > 8.0) continue; // Very wide range
+
+                        // Project 3D point to 2D
+                        const x2d = Math.round((p.x * this.focalLength / z) + this.centerX);
+                        const y2d = Math.round((-p.y * this.focalLength / z) + this.centerY);
+
+                        if (x2d >= 0 && x2d < mapWidth && y2d >= 0 && y2d < mapHeight) {
+                            if (!depthMap[y2d][x2d] || depthMap[y2d][x2d].z > z) {
+                                depthMap[y2d][x2d] = {
+                                    x: p.x, y: p.y, z: z,
+                                    r: p.r || 128, g: p.g || 128, b: p.b || 128
+                                };
+                            }
+                        }
+                    }
+
+                    return depthMap;
+                };
+
+                console.log('✅ DepthToMeshConverter initialized with Z-depth filtering fix');
             } else {
                 console.warn('⚠️ DepthToMeshConverter not found');
             }
