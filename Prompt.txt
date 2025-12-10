@@ -1,0 +1,79 @@
+Disini saya ingin anda membuat beberapa fitur, yaitu sebagai berikut:
+1. Tambahkan fitur kamera depth di halaman awal
+2. Saya itu sebenarnya tidak mau kalau yang objek yang tercetak itu berbentuk Point - point kecil yang terpisah, disini itu saya ingin agar yang tercetak menjadi 1 bentuk yang utuh. Nah saya setelah melihat mekanisme di software scannect saya melihat bahwa disana untuk merekam objek menggunakan kamera depth yang dimana bisa mencetak gambar yang utuh, tidak berbentuk poin - poin yang pecah. Coba cari library atau menggunakan source code bagaimana, atau tool bagaimana yang bisa mencetak dengan kamera depth dan bisa menghasilkan objek yang utuh, bukan Poin - poin yang berkumpul
+
+Disini saya ingin anda membuat beberapa fitur, yaitu sebagai berikut: 1. Tambahkan fitur kamera depth di halaman awal [Image #1] , 2. Saya itu sebenarnya tidak mau kalau   
+  yang objek yang tercetak itu berbentuk Point - point kecil yang terpisah [Image #2], disini itu saya ingin agar yang tercetak menjadi 1 bentuk yang utuh. Nah saya setelah  
+  melihat mekanisme di software scannect saya melihat bahwa disana untuk merekam objek menggunakan kamera depth yang dimana bisa mencetak gambar yang utuh [Image #3],        
+  tidak berbentuk poin - poin yang pecah. Coba cari library atau menggunakan source code bagaimana, atau tool bagaimana yang bisa mencetak dengan kamera depth dan bisa       
+  menghasilkan objek yang utuh, bukan Poin - poin yang berkumpul [Image #4] 
+
+Revisi:
+
+1. Disini kamera depth masih belum berfungsi, tolong carilah solusi untuk masalah ini agar kinnect bisa menangkap objek dengan tampilan depth
+2. Disini model 3d yang tercetak malah berada jauh dari kanvas 3js yang Utama, perbaiki agar objek 3d yang dibuat berada diatas pas dari kanvas 3js
+3. Ubah system agar scan tidak ditangkap dengan count Waktu selama 6 detik. Tetapi menjadi kita klik start scan, kemudian nanti kinnect akan merekam dengan kamera depth seperti di skannect. Kemudian bisa dihentikan jika sudah selesai. Ingat buat system yang ringan, jangan sampai membuat lag
+
+Kemudian disini saya ingin anda menerapkan system seperti di skanect, sebagai berikut:
+1. Cara Skanect merekam objek 3D
+
+- Kinect menangkap kedalaman (depth) dan warna (RGB) saat kamu mengelilingi objek.
+- Skanect menggabungkan semua data itu menjadi bentuk 3D.
+
+2. Cara kerjanya
+
+- Kinect memindai jarak tiap titik (depth map).
+- Skanect melacak posisi kamera saat bergerak (SLAM).
+- Semua depth digabung menjadi volume 3D (TSDF).
+- Permukaan diambil menjadi mesh.
+- Warna ditempel ke mesh sebagai tekstur.
+
+3. Bagaimana objek 3D terbentuk
+
+- Data jarak dari banyak sudut → digabung → jadi volume → dikonversi jadi mesh segitiga → diberi tekstur warna.
+
+4. Struktur objek 3D
+
+Umumnya berisi:
+
+- Vertex (titik 3D)
+- Faces (segitiga yang membentuk permukaan)
+- Texture (gambar warna)
+- Normal (arah permukaan)
+
+Revisi
+1. Saat start scan tidak ada objek 3d yang terbentuk diatas kanvas 3js
+2. Kemudian saya juga tidak bisa menggerakkan kamera ke atas, ke Bawah dan ke samping. Tetapi untuk zoom in atau zoom out bisa.
+3. Kemudian saat mencoba mesh begini : Failed to generate mesh: Mesh generation failed. Mungkin karena objek 3d belum terbentuk
+
+Begini output terminal:
+[POINTCLOUD] ? Serialized: ~0 points, 56 bytes
+[POINTCLOUD] ? Sent to client #1
+[POINTCLOUD] ??? Sent to 1/1 clients
+[POINTCLOUD] Frame event triggered. Depth frame: OK, Clients: 1
+[POINTCLOUD] ? Depth frame: 640x480
+[SERIALIZE] Sample depth values (raw >> 3):
+[SERIALIZE]   Pixel (24,432): raw=8664, depth=1083
+[SERIALIZE]   Pixel (28,432): raw=8584, depth=1073
+[SERIALIZE]   Pixel (40,432): raw=9064, depth=1133
+[SERIALIZE]   Pixel (44,432): raw=9208, depth=1151
+[SERIALIZE]   Pixel (16,436): raw=8104, depth=1013
+[SERIALIZE]   Pixel (20,436): raw=8176, depth=1022
+[SERIALIZE]   Pixel (24,436): raw=8632, depth=1079
+[SERIALIZE]   Pixel (28,436): raw=8664, depth=1083
+[SERIALIZE]   Pixel (40,436): raw=8976, depth=1122
+[SERIALIZE]   Pixel (44,436): raw=9088, depth=1136
+[SERIALIZE] Valid points: 14, Out of range: 19186, Invalid skeleton: 0
+[SERIALIZE] Depth frame MinDepth: 800, MaxDepth: 4000
+[SERIALIZE] Actual depth range seen: 1013 - 1151 mm
+[SERIALIZE] ? JSON created: 949 bytes, 14 pointsq	
+
+lanjutkan di skanect-like-scanner.html
+
+Objects with zero volume removed
+
+The file does not contain any geometry data.
+
+Saya ingin anda membuat beberapa fitur baru : 1. Saya bisa mengatur ukuran dari objek 3d yang ada diatas kanvas 3js, jadi setelah scan saya bisa mengatur ukuran dari objek 3d. 2. Jadi saat scan tidak apa-apa ada background yang tercetak, tetapi setelah scan selesai atau saya stop scan otomatis nanti background yang tercetak langsung hilang tersisa objek 3d saja. 3. Disini saya sudah ekspor dari hasil scan saya, tetapi belum saya lakukan watertight. Berhasil di ekspor tetapi saat saya buka file nya di aplikasi 3d print tidak bisa dibuka dengan notif seperti ini: Objects with zero volume removed, The file does not contain any geometry data. Bagaimana Solusi untuuk permasalahan ini? Saya juga ingin langsung ekspor tanpa lakukan watertight.
+
+1. Size Control: Hanya mempengaruh tampilan, tidak mengubah data asli. Disini anda berkata hanya mempengaruhi tampilan, sementara saya ingin agar objek 3d yang diatur scale nya juga mempengaruhi besar kecilnya ukuran 3d yang nanti akan di ekspor
