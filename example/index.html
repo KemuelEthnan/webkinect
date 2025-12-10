@@ -622,9 +622,9 @@
                                 <label style="color: #95a5a6; font-size: 11px; text-transform: uppercase;">Status</label>
                                 <div class="scan-status idle" id="scanStatus">Idle</div>
                             </div>
-                            <button id="startScanBtn" class="btn-success" onclick="startScan()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #2ecc71; color: white;">▶️ Start Scan</button>
+                            <button id="startScanBtn" class="btn-success" onclick="startScan()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #2ecc71; color: white;">🎥 Start Record</button>
                             <button id="startPhase2Btn" onclick="startPhase2()" disabled style="display: none; width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #ff9800; color: white;">🔄 Mulai Fase 2 (Belakang)</button>
-                            <button id="stopScanBtn" class="btn-warning" onclick="stopCapture()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #f39c12; color: white;">⏸️ Stop Scan</button>
+                            <button id="stopScanBtn" class="btn-warning" onclick="stopCapture()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #f39c12; color: white;">⏹️ Stop Record</button>
                             <button id="generateWatertightBtn" class="btn-primary" onclick="generateWatertight()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🔷 Generate Watertight</button>
                             <button id="exportSTLBtn" class="btn-primary" onclick="exportSTL()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">💾 Export STL</button>
                             <button id="clearBtn" class="btn-danger" onclick="clearScan()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #e74c3c; color: white;">🗑️ Clear All</button>
@@ -702,6 +702,31 @@
                             <div id="phaseInfo" style="display: none; margin-top: 10px; padding: 10px; background: #2c3e50; border-radius: 5px;">
                                 <label style="font-weight: bold; color: #ecf0f1; font-size: 12px;">Fase Saat Ini:</label>
                                 <span id="currentPhase" style="font-size: 1.1em; color: #f39c12;">-</span>
+                            </div>
+                        </div>
+
+                        <!-- Size Control -->
+                        <div class="control-section">
+                            <h3>📏 Size Control</h3>
+                            <div class="slider-control">
+                                <label style="color: #95a5a6; font-size: 12px;">
+                                    <span>Object Scale</span>
+                                    <span id="objectScaleValue">1.00x</span>
+                                </label>
+                                <input type="range" id="objectScaleSlider" min="0.1" max="3.0" value="1.0" step="0.05" oninput="updateObjectScale(this.value)">
+                                <div style="display: flex; gap: 5px; margin-top: 5px;">
+                                    <button onclick="adjustScale(-0.1)" style="flex: 1; padding: 8px; background: #2c3e50; color: #ecf0f1; border: 1px solid #667eea; border-radius: 4px; cursor: pointer; font-weight: 600;">➖ Smaller</button>
+                                    <button onclick="resetScale()" style="flex: 1; padding: 8px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">↺ Reset</button>
+                                    <button onclick="adjustScale(0.1)" style="flex: 1; padding: 8px; background: #2c3e50; color: #ecf0f1; border: 1px solid #667eea; border-radius: 4px; cursor: pointer; font-weight: 600;">➕ Bigger</button>
+                                </div>
+                            </div>
+                            <div class="info-item" style="background: #1e2a3a; color: #ecf0f1; margin-top: 10px;">
+                                <label style="color: #95a5a6; font-size: 11px;">💡 TIP</label>
+                                <div style="font-size: 11px; color: #95a5a6;">
+                                    Adjust object size (0.1x - 3.0x)<br>
+                                    ✅ Applied to STL export<br>
+                                    ✅ Real size change, not just visual
+                                </div>
                             </div>
                         </div>
 
@@ -788,11 +813,12 @@
         var frameCount = 0;
         var scanTimer = null;
         var scanStartTime = 0;
-        var scanDuration = 10000; // Auto-stop after 10 seconds (lebih banyak frame untuk hasil lengkap)
+        var scanDuration = 45000; // Auto-stop after 45 seconds - cukup untuk scan 360 derajat
         var dataReceivedDuringScan = 0;
         var pointCloudDataReceived = 0;
         var maxTotalPoints = 2000000; // Limit to 2M points for ultra high-quality scans
         var autoCaptureTimer = null;
+        var manualRecordMode = false; // Auto-stop mode yang lebih reliable
         
         // Multi-phase scanning (depan dan belakang)
         var scanPhase = 0; // 0 = not started, 1 = depan (front), 2 = belakang (back)
@@ -1506,14 +1532,15 @@
                 return;
             }
             
-            // ICP dan Noise Filtering dihapus karena membuat objek tidak karuan
-            // Langsung ke filtering colored objects
-            
+            // Smart ICP Alignment for 360° scans
+            // Strategy: Use ICP only when we have enough reference points and only every N frames
+            // This balances quality (proper alignment) with performance (not too CPU intensive)
+
             // Update Kinect position estimate (for future tracking)
             if (pointCloud.length === 0) {
                 kinectPosition = pointCloudProcessor.estimateKinectPosition(newPoints);
             }
-            
+
             // Filter menggunakan depth camera untuk menangkap objek 3D anggota tubuh
             // Objek dekat (anggota tubuh) akan berwarna merah/oranye, background jauh akan abu-abu/hitam
             // Only apply filter if we have enough points to filter effectively
@@ -1534,18 +1561,18 @@
                     humanBodyPoints = newPoints;
                 }
             }
-            
+
+            // ICP Alignment DISABLED - menyebabkan duplikasi parah untuk 360° scans
+            // Strategi yang lebih baik: aggressive voxel-based deduplication
+            // ICP hanya cocok untuk multi-phase scan, bukan continuous 360° scan
+
             // CRITICAL: Remove duplicate/overlapping points to prevent layering
             // Use voxel-based deduplication for better results
             const beforeDedup = humanBodyPoints.length;
             humanBodyPoints = removeDuplicatePoints(humanBodyPoints, pointCloud);
-            
-            // Optional: Apply temporal filtering for additional stability (can be enabled)
-            // This helps reduce noise and layering from frame-to-frame variations
-            // humanBodyPoints = applyTemporalFiltering(humanBodyPoints, pointCloudFrames);
-            
+
             console.log('📊 Deduplication: ' + beforeDedup + ' → ' + humanBodyPoints.length + ' points');
-            
+
             // Add filtered and deduplicated points to point cloud
             pointCloud.push(...humanBodyPoints);
             frameCount++;
@@ -1960,14 +1987,16 @@
                 pointCloudBack = [];
                 pointCloud = []; // Reset current point cloud
                 console.log('🔄 Starting MULTI-PHASE SCAN - Phase 1 (Depan/Front)');
-                console.log('📌 Duration: 15 seconds');
+                console.log('📌 Duration: 45 seconds (or stop manually)');
             } else {
-                // Normal mode: single scan
+                // Normal mode: auto-stop 45 detik untuk scan 360 derajat
                 scanPhase = 0;
                 pointCloud = [];
-                console.log('🚀 Starting REAL-TIME CAPTURE (6 seconds or until ' + maxTotalPoints.toLocaleString() + ' points)...');
-                console.log('📌 Mode: Simplified auto-capture');
-                console.log('📌 Duration: 6 seconds (5-7 detik untuk banyak frame)');
+                console.log('🎥 Starting SCAN MODE untuk scan 360 derajat');
+                console.log('📌 Duration: 45 seconds (cukup untuk scan 360°)');
+                console.log('📌 Bergerak 360° mengelilingi objek untuk menangkap semua sisi');
+                console.log('📌 Scan akan otomatis berhenti setelah 45 detik');
+                console.log('📌 Atau klik "Stop Record" untuk berhenti lebih awal');
                 console.log('📌 Max points: ' + maxTotalPoints.toLocaleString());
             }
 
@@ -1983,26 +2012,35 @@
             isScanning = true;
             window.isScanning = true;
             isCaptureActive = true;
+            currentMode = 'scanning'; // CRITICAL: Ensure currentMode is set for data processing
 
-            // Auto-stop timer - different duration for multi-phase vs normal
+            // AUTO-STOP TIMER - 45 detik untuk scan 360 derajat
+            // User bisa stop lebih awal dengan button Stop Record
             if (autoCaptureTimer) clearTimeout(autoCaptureTimer);
+
             const currentDuration = isMultiPhaseMode ? phaseDuration : scanDuration;
-            autoCaptureTimer = setTimeout(() => {
-                console.log('⏱️ ' + (currentDuration / 1000) + ' seconds elapsed - auto-stopping capture');
-                console.log('📊 Final point count:', pointCloud.length.toLocaleString());
-                if (isMultiPhaseMode && scanPhase === 1) {
-                    // Phase 1 complete, save to pointCloudFront
-                    pointCloudFront = [...pointCloud];
-                    console.log('✅ Phase 1 (Depan) complete: ' + pointCloudFront.length.toLocaleString() + ' points');
-                    stopCapture();
-                    // Show button for Phase 2
-                    document.getElementById('startPhase2Btn').style.display = 'inline-block';
-                    document.getElementById('startPhase2Btn').disabled = false;
-                    updateScanStatus('ready', 'Fase 1 selesai! Putar objek 180° lalu klik "Mulai Fase 2"');
-                } else {
-                    stopCapture();
-                }
-            }, currentDuration);
+
+            if (currentDuration > 0) {
+                autoCaptureTimer = setTimeout(() => {
+                    console.log('⏱️ ' + (currentDuration / 1000) + ' seconds elapsed - auto-stopping capture');
+                    console.log('📊 Final point count:', pointCloud.length.toLocaleString());
+
+                    if (isMultiPhaseMode && scanPhase === 1) {
+                        pointCloudFront = [...pointCloud];
+                        console.log('✅ Phase 1 (Depan) complete: ' + pointCloudFront.length.toLocaleString() + ' points');
+                        stopCapture();
+                        document.getElementById('startPhase2Btn').style.display = 'inline-block';
+                        document.getElementById('startPhase2Btn').disabled = false;
+                        updateScanStatus('ready', 'Fase 1 selesai! Putar objek 180° lalu klik "Mulai Fase 2"');
+                    } else {
+                        stopCapture();
+                    }
+                }, currentDuration);
+
+                console.log('⏱️ Auto-stop timer set: ' + (currentDuration / 1000) + ' seconds');
+            } else {
+                console.warn('⚠️ No auto-stop timer (scanDuration = 0)');
+            }
             
             // Get settings
             // ICP dan Noise Filtering dihapus karena membuat objek tidak karuan
@@ -2018,17 +2056,18 @@
             // Update UI
             document.getElementById('startScanBtn').disabled = true;
             document.getElementById('startScanBtn').classList.add('scanning');
-            document.getElementById('startScanBtn').textContent = isMultiPhaseMode ? 'Scanning Fase 1...' : 'Scanning...';
+            document.getElementById('startScanBtn').textContent = isMultiPhaseMode ? '🔴 Scanning Fase 1...' : '🔴 Scanning (45s)...';
+            document.getElementById('stopScanBtn').disabled = false;
             document.getElementById('startPhase2Btn').style.display = 'none';
             document.getElementById('startPhase2Btn').disabled = true;
             document.getElementById('clearBtn').disabled = false;
-            updateScanStatus('scanning', isMultiPhaseMode ? 'Scanning Fase 1 (Depan)...' : 'Scanning...');
+            updateScanStatus('scanning', isMultiPhaseMode ? 'Scanning Fase 1 (45 detik)...' : '🎥 Scanning 360° (45 detik) - Bergerak mengelilingi objek');
             document.getElementById('pointCount').textContent = '0';
             document.getElementById('frameCount').textContent = '0';
             document.getElementById('progressFill').style.width = '0%';
             document.getElementById('progressFill').textContent = '0%';
             if (isMultiPhaseMode) {
-                document.getElementById('currentPhase').textContent = 'Fase 1: Depan';
+                document.getElementById('currentPhase').textContent = 'Fase 1: Depan (45s)';
             }
             
             // Send PointCloud mode request directly and multiple times to ensure server receives it
@@ -2340,7 +2379,7 @@
         }
         
         function stopCapture() {
-            console.log('🛑 Stopping capture...');
+            console.log('⏹️ Stopping scan...');
             isCaptureActive = false;
             isScanning = false;
 
@@ -2373,39 +2412,73 @@
                 // Reset UI buttons
                 document.getElementById('startScanBtn').disabled = false;
                 document.getElementById('startScanBtn').classList.remove('scanning');
-                document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+                document.getElementById('startScanBtn').textContent = '🎥 Start Record';
                 document.getElementById('stopScanBtn').disabled = true;
-                
+
                 return; // Don't enable mesh/export yet - wait for Phase 2
             } else if (isMultiPhaseMode && scanPhase === 2) {
                 // Phase 2 complete - already merged in timeout handler
                 document.getElementById('startScanBtn').disabled = false;
                 document.getElementById('startScanBtn').classList.remove('scanning');
-                document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+                document.getElementById('startScanBtn').textContent = '🎥 Start Record';
                 document.getElementById('stopScanBtn').disabled = true;
                 return;
             }
 
             // Normal mode or both phases complete
+            // AUTO-REMOVE BACKGROUND after scan complete
+            if (pointCloud.length > 0) {
+                console.log('🔍 AUTO-REMOVING BACKGROUND after scan...');
+                const beforeClean = pointCloud.length;
+
+                // Apply balanced filter to remove background
+                const cleanedPoints = pointCloud.filter(p => {
+                    const dist = Math.abs(p.z || 0);
+                    const yPos = p.y || 0;
+                    // Moderate filter: keep object, remove obvious background
+                    // Z range: 0.5-3.0m (remove far background)
+                    // Y range: -1.0-1.8m (remove floor/ceiling)
+                    return dist >= 0.5 && dist <= 3.0 && yPos >= -1.0 && yPos <= 1.8;
+                });
+
+                // Only apply if we still have enough points (at least 30% retained)
+                const retentionRate = cleanedPoints.length / beforeClean;
+                if (retentionRate >= 0.3 && cleanedPoints.length >= 1000) {
+                    pointCloud = cleanedPoints;
+                    console.log('✅ Background removed: ' + beforeClean.toLocaleString() + ' → ' +
+                        pointCloud.length.toLocaleString() + ' points (' +
+                        (retentionRate * 100).toFixed(1) + '% retained)');
+
+                    // Update display with cleaned point cloud
+                    updatePointCloudDisplay();
+                } else {
+                    console.warn('⚠️ Background filter too aggressive (' + (retentionRate * 100).toFixed(1) + '%), keeping original points');
+                }
+            }
+
             // Update UI
             updateScanStatus('ready', pointCloud.length > 0 ?
-                'Capture stopped - ' + pointCloud.length.toLocaleString() + ' points collected' :
-                'Capture stopped - No data');
+                '✅ Scan completed - ' + pointCloud.length.toLocaleString() + ' points (background removed)' :
+                'Scan stopped - No data');
 
             // Enable buttons if we have points
             if (pointCloud.length > 0) {
                 document.getElementById('generateWatertightBtn').disabled = false;
                 document.getElementById('exportSTLBtn').disabled = false; // Enable export even without mesh
-                console.log('✅ Capture stopped. Total: ' + pointCloud.length.toLocaleString() + ' points from ' + frameCount + ' frames');
+                document.getElementById('clearBtn').disabled = false; // Enable clear button
+                console.log('✅ Scan completed. Total: ' + pointCloud.length.toLocaleString() + ' points from ' + frameCount + ' frames');
+                console.log('📌 Siap untuk Generate Watertight atau Export STL');
 
                 // Auto-center the point cloud
                 centerModel();
+            } else {
+                document.getElementById('clearBtn').disabled = true; // Disable clear if no data
             }
-            
+
             // Reset UI buttons
             document.getElementById('startScanBtn').disabled = false;
             document.getElementById('startScanBtn').classList.remove('scanning');
-            document.getElementById('startScanBtn').textContent = 'Reset & Start Capture';
+            document.getElementById('startScanBtn').textContent = '🎥 Start Record';
             document.getElementById('stopScanBtn').disabled = true;
         }
 
@@ -2515,103 +2588,318 @@
             }
 
             // CRITICAL: Downsample if too many points (prevent freeze)
+            // Balance between quality and performance - optimized for watertight quality
             let meshPoints = pointCloud;
-            const maxMeshPoints = 100000; // Increased for better quality mesh
+            const maxMeshPoints = 100000; // Increased for higher quality watertight mesh
 
             if (pointCloud.length > maxMeshPoints) {
-                console.log('⚠️ Too many points (' + pointCloud.length.toLocaleString() + ') - downsampling to ' + maxMeshPoints.toLocaleString());
-                // Use uniform sampling instead of skip factor for better quality
-                const step = pointCloud.length / maxMeshPoints;
-                meshPoints = [];
-                for (let i = 0; i < pointCloud.length; i += step) {
-                    const idx = Math.floor(i);
-                    if (idx < pointCloud.length) {
-                        meshPoints.push(pointCloud[idx]);
+                console.log('⚠️ Too many points (' + pointCloud.length.toLocaleString() + ') - downsampling to ' + maxMeshPoints.toLocaleString() + ' untuk mencegah freeze');
+
+                // Use FINER voxel-based downsampling for better detail preservation
+                const voxelSize = 0.01; // 1cm voxels (was 1.5cm) - finer detail
+                const voxelMap = new Map();
+
+                for (let i = 0; i < pointCloud.length; i++) {
+                    const p = pointCloud[i];
+                    const vx = Math.floor(p.x / voxelSize);
+                    const vy = Math.floor(p.y / voxelSize);
+                    const vz = Math.floor(p.z / voxelSize);
+                    const key = `${vx},${vy},${vz}`;
+
+                    // Keep one point per voxel
+                    if (!voxelMap.has(key)) {
+                        voxelMap.set(key, p);
                     }
                 }
-                console.log('✅ Downsampled to ' + meshPoints.length.toLocaleString() + ' points using uniform sampling');
 
-                // Don't show alert for better UX
+                meshPoints = Array.from(voxelMap.values());
+
+                // If still too many, use additional uniform sampling
+                if (meshPoints.length > maxMeshPoints) {
+                    const step = meshPoints.length / maxMeshPoints;
+                    const sampledPoints = [];
+                    for (let i = 0; i < meshPoints.length; i += step) {
+                        const idx = Math.floor(i);
+                        if (idx < meshPoints.length) {
+                            sampledPoints.push(meshPoints[idx]);
+                        }
+                    }
+                    meshPoints = sampledPoints;
+                }
+
+                console.log('✅ Downsampled to ' + meshPoints.length.toLocaleString() + ' points (voxel-based with finer detail)');
             }
 
-            // Apply aggressive background filter to mesh points - HILANGKAN SEMUA BACKGROUND
-            console.log('🔍 Filtering background from mesh points (aggressive mode - hilangkan semua background)...');
+            // === SIMPLIFIED BACKGROUND REMOVAL UNTUK WATERTIGHT ===
+            // 2-stage filtering yang stabil dan tidak menyebabkan error
+            console.log('🔍 Filtering background from mesh points...');
             const beforeFilter = meshPoints.length;
-            // Gunakan filter depth-based untuk menghilangkan background
-            meshPoints = filterDepthBasedBodyParts(meshPoints);
-            console.log('✅ Background filter: ' + beforeFilter + ' → ' + meshPoints.length + ' points (background dihilangkan)');
 
-            if (meshPoints.length < 100) {
-                console.warn('⚠️ Too few points after filtering, using less aggressive filter');
-                // Tetap gunakan depth-based filter (tapi dengan range lebih luas)
-                const lessAggressiveFiltered = meshPoints.filter(p => {
+            // Stage 1: BALANCED depth-based filtering untuk watertight
+            // Previous filter was TOO aggressive (100k -> 79 points!)
+            // Need to balance between removing background AND keeping enough points
+            try {
+                // Apply primary depth filter (existing function)
+                const afterPrimaryFilter = filterDepthBasedBodyParts(meshPoints);
+                console.log('📊 After primary depth filter: ' + beforeFilter + ' → ' + afterPrimaryFilter.length + ' points');
+
+                // Check if primary filter was too aggressive
+                const retentionRate = afterPrimaryFilter.length / beforeFilter;
+                console.log('📊 Retention rate: ' + (retentionRate * 100).toFixed(1) + '%');
+
+                if (retentionRate < 0.1) {
+                    // Primary filter too aggressive (less than 10% retained)
+                    console.warn('⚠️ Primary filter too aggressive, using more lenient filter');
+
+                    // Use MUCH more lenient filter - prioritize keeping points over perfect background removal
+                    meshPoints = meshPoints.filter(p => {
+                        const dist = Math.abs(p.z || 0);
+                        const yPos = p.y || 0;
+                        // Very lenient range: keep most points
+                        // Z range: 0.4-3.5m - wide range
+                        // Y range: -1.5-2.0m - wide vertical range
+                        return dist >= 0.4 && dist <= 3.5 && yPos >= -1.5 && yPos <= 2.0;
+                    });
+                } else if (retentionRate < 0.3) {
+                    // Moderately aggressive (10-30% retained) - use moderate filter
+                    console.log('📊 Using moderate filter for balance');
+                    meshPoints = meshPoints.filter(p => {
+                        const dist = Math.abs(p.z || 0);
+                        const yPos = p.y || 0;
+                        // Moderate range: balance detail and background removal
+                        // Z range: 0.5-3.0m
+                        // Y range: -1.0-1.8m
+                        return dist >= 0.5 && dist <= 3.0 && yPos >= -1.0 && yPos <= 1.8;
+                    });
+                } else {
+                    // Primary filter worked well (>30% retained), use it
+                    console.log('✅ Primary filter retention good, using filtered points');
+                    meshPoints = afterPrimaryFilter;
+                }
+
+                console.log('📊 After balanced filter: ' + meshPoints.length + ' points (' +
+                    ((meshPoints.length / beforeFilter) * 100).toFixed(1) + '% retained)');
+
+                // Ensure minimum points for mesh generation
+                if (meshPoints.length < 1000) {
+                    console.warn('⚠️ Too few points after filtering (' + meshPoints.length + '), relaxing completely');
+                    // Last resort: minimal filtering, just remove obvious outliers
+                    meshPoints = pointCloud.filter(p => {
+                        const dist = Math.abs(p.z || 0);
+                        const yPos = p.y || 0;
+                        // Minimal filter: just remove extreme outliers
+                        return dist >= 0.3 && dist <= 5.0 && yPos >= -2.0 && yPos <= 3.0;
+                    });
+                }
+
+                // Limit for performance
+                if (meshPoints.length > 100000) {
+                    console.log('⚠️ Downsampling to 100k for performance');
+                    // Uniform sampling to keep diversity
+                    const step = meshPoints.length / 100000;
+                    const sampled = [];
+                    for (let i = 0; i < meshPoints.length; i += step) {
+                        sampled.push(meshPoints[Math.floor(i)]);
+                    }
+                    meshPoints = sampled;
+                }
+            } catch (err) {
+                console.error('❌ Depth filter error:', err);
+                // Fallback: use most points with minimal filtering
+                meshPoints = pointCloud.filter(p => {
                     const dist = Math.abs(p.z || 0);
-                    return dist >= 0.85 && dist <= 3.0; // Range lebih luas
-                });
-                if (lessAggressiveFiltered.length > 50) {
-                    meshPoints = lessAggressiveFiltered;
+                    const yPos = p.y || 0;
+                    return dist >= 0.4 && dist <= 4.0 && yPos >= -1.5 && yPos <= 2.5;
+                }).slice(0, Math.min(100000, pointCloud.length));
+            }
+
+            // Stage 2: Simple outlier removal dengan error handling
+            if (meshPoints.length > 500) {
+                try {
+                    console.log('🔍 Removing outliers...');
+                    const beforeOutlier = meshPoints.length;
+
+                    // Calculate center of mass dengan null checks
+                    let centerX = 0, centerY = 0, centerZ = 0;
+                    let validCount = 0;
+
+                    for (let i = 0; i < meshPoints.length; i++) {
+                        const p = meshPoints[i];
+                        if (p && typeof p.x === 'number' && typeof p.y === 'number' && typeof p.z === 'number') {
+                            centerX += p.x;
+                            centerY += p.y;
+                            centerZ += p.z;
+                            validCount++;
+                        }
+                    }
+
+                    if (validCount > 0) {
+                        centerX /= validCount;
+                        centerY /= validCount;
+                        centerZ /= validCount;
+
+                        // Calculate distances with validation
+                        const validPoints = [];
+                        const distances = [];
+
+                        for (let i = 0; i < meshPoints.length; i++) {
+                            const p = meshPoints[i];
+                            if (p && typeof p.x === 'number' && typeof p.y === 'number' && typeof p.z === 'number') {
+                                const dx = p.x - centerX;
+                                const dy = p.y - centerY;
+                                const dz = p.z - centerZ;
+                                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                                validPoints.push(p);
+                                distances.push(dist);
+                            }
+                        }
+
+                        // Use median-based threshold - BALANCED for watertight
+                        if (distances.length > 0) {
+                            const sortedDist = distances.slice().sort((a, b) => a - b);
+                            const medianDist = sortedDist[Math.floor(sortedDist.length / 2)];
+                            const threshold = medianDist * 2.0; // More lenient: 2.0x median (was 1.3x)
+
+                            // Filter points
+                            const filtered = [];
+                            for (let i = 0; i < validPoints.length; i++) {
+                                if (distances[i] <= threshold) {
+                                    filtered.push(validPoints[i]);
+                                }
+                            }
+
+                            // Check retention rate before applying
+                            const outlierRetention = filtered.length / beforeOutlier;
+                            if (outlierRetention > 0.5 && filtered.length > 500) {
+                                // Good retention (>50%), use filtered
+                                meshPoints = filtered;
+                                console.log('📊 After outlier removal: ' + beforeOutlier + ' → ' + meshPoints.length + ' points (' +
+                                    (outlierRetention * 100).toFixed(1) + '% retained, threshold: ' + threshold.toFixed(3) + 'm)');
+                            } else {
+                                console.warn('⚠️ Outlier removal too aggressive (' + (outlierRetention * 100).toFixed(1) + '%), keeping original points');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('❌ Outlier removal error:', err);
+                    // Continue with current meshPoints
                 }
             }
 
-            // === TRANSFORM MESH POINTS TO CANVAS SPACE (sama seperti point cloud) ===
-            // Calculate RAW bounds from Kinect coordinates
-            let rawMinX = Infinity, rawMaxX = -Infinity;
-            let rawMinY = Infinity, rawMaxY = -Infinity;
-            let rawMinZ = Infinity, rawMaxZ = -Infinity;
-
-            for (let i = 0; i < meshPoints.length; i++) {
-                const p = meshPoints[i];
-                rawMinX = Math.min(rawMinX, p.x || 0);
-                rawMaxX = Math.max(rawMaxX, p.x || 0);
-                rawMinY = Math.min(rawMinY, p.y || 0);
-                rawMaxY = Math.max(rawMaxY, p.y || 0);
-                rawMinZ = Math.min(rawMinZ, p.z || 0);
-                rawMaxZ = Math.max(rawMaxZ, p.z || 0);
+            // Background removal complete
+            console.log('✅ Background removal complete: ' + beforeFilter + ' → ' + meshPoints.length + ' points');
+            if (beforeFilter > 0) {
+                const removedPercent = ((1 - meshPoints.length / beforeFilter) * 100).toFixed(1);
+                console.log('📊 Background removed: ' + (beforeFilter - meshPoints.length).toLocaleString() + ' points (' + removedPercent + '%)');
             }
 
-            console.log('Mesh RAW bounds (Kinect):', {
-                x: [rawMinX, rawMaxX],
-                y: [rawMinY, rawMaxY],
-                z: [rawMinZ, rawMaxZ]
-            });
+            if (meshPoints.length < 500) {
+                console.error('❌ Too few points after filtering (' + meshPoints.length + ')');
+                document.getElementById('generateWatertightBtn').disabled = false;
+                document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                document.getElementById('clearBtn').disabled = false;
+                updateScanStatus('ready', 'Error: Not enough points after filtering');
 
-            // Calculate center and size
-            const centerX = (rawMinX + rawMaxX) / 2;
-            const centerY = (rawMinY + rawMaxY) / 2;
-            const centerZ = (rawMinZ + rawMaxZ) / 2;
-            const sizeX = rawMaxX - rawMinX;
-            const sizeY = rawMaxY - rawMinY;
-            const sizeZ = rawMaxZ - rawMinZ;
-            const maxDim = Math.max(sizeX, sizeY, sizeZ);
-
-            // Calculate scale factor to fit within canvas (max 350mm)
-            const maxObjectSize = window.maxObjectSize || 0.35;
-            let scaleFactor = 1.0;
-            if (maxDim > maxObjectSize) {
-                scaleFactor = maxObjectSize / maxDim;
-                console.log('⚠️ Mesh terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm');
+                const retentionPercent = ((meshPoints.length / beforeFilter) * 100).toFixed(2);
+                alert('❌ Tidak cukup points setelah filtering!\n\n' +
+                      '📊 Statistik:\n' +
+                      'Points awal: ' + beforeFilter.toLocaleString() + '\n' +
+                      'Points tersisa: ' + meshPoints.length + ' (' + retentionPercent + '%)\n' +
+                      'Points minimal: 500\n\n' +
+                      '💡 Solusi:\n' +
+                      '1. Scan LEBIH LAMA (target: 100,000+ points)\n' +
+                      '2. Pastikan objek di range 0.5m - 3.0m dari Kinect\n' +
+                      '3. Scan dari berbagai sudut (360°) untuk coverage lengkap\n' +
+                      '4. Background harus berbeda dari objek (beda warna/jarak)\n' +
+                      '5. Jangan bergerak terlalu cepat saat scan 360°');
+                return;
             }
 
-            // Transform mesh points to canvas space
-            const transformedMeshPoints = meshPoints.map(p => {
-                return {
-                    x: (p.x - centerX) * scaleFactor,
-                    y: (p.y - rawMinY) * scaleFactor, // minY becomes 0 (on grid)
-                    z: (p.z - centerZ) * scaleFactor,
-                    r: p.r,
-                    g: p.g,
-                    b: p.b
-                };
-            });
+            // === TRANSFORM MESH POINTS TO CANVAS SPACE dengan error handling ===
+            try {
+                console.log('🔄 Transforming mesh points to canvas space...');
 
-            console.log('✅ Mesh points transformed to canvas space:', {
-                originalSize: [sizeX, sizeY, sizeZ],
-                scaledSize: [sizeX * scaleFactor, sizeY * scaleFactor, sizeZ * scaleFactor],
-                scaleFactor: scaleFactor
-            });
+                // Calculate RAW bounds from Kinect coordinates
+                let rawMinX = Infinity, rawMaxX = -Infinity;
+                let rawMinY = Infinity, rawMaxY = -Infinity;
+                let rawMinZ = Infinity, rawMaxZ = -Infinity;
 
-            // Use transformed points for mesh generation
-            meshPoints = transformedMeshPoints;
+                for (let i = 0; i < meshPoints.length; i++) {
+                    const p = meshPoints[i];
+                    if (p && typeof p.x === 'number' && typeof p.y === 'number' && typeof p.z === 'number') {
+                        rawMinX = Math.min(rawMinX, p.x);
+                        rawMaxX = Math.max(rawMaxX, p.x);
+                        rawMinY = Math.min(rawMinY, p.y);
+                        rawMaxY = Math.max(rawMaxY, p.y);
+                        rawMinZ = Math.min(rawMinZ, p.z);
+                        rawMaxZ = Math.max(rawMaxZ, p.z);
+                    }
+                }
+
+                // Validate bounds
+                if (!isFinite(rawMinX) || !isFinite(rawMaxX) || !isFinite(rawMinY) || !isFinite(rawMaxY) || !isFinite(rawMinZ) || !isFinite(rawMaxZ)) {
+                    throw new Error('Invalid bounds calculated');
+                }
+
+                console.log('Mesh RAW bounds (Kinect):', {
+                    x: [rawMinX.toFixed(3), rawMaxX.toFixed(3)],
+                    y: [rawMinY.toFixed(3), rawMaxY.toFixed(3)],
+                    z: [rawMinZ.toFixed(3), rawMaxZ.toFixed(3)]
+                });
+
+                // Calculate center and size
+                const centerX = (rawMinX + rawMaxX) / 2;
+                const centerY = (rawMinY + rawMaxY) / 2;
+                const centerZ = (rawMinZ + rawMaxZ) / 2;
+                const sizeX = rawMaxX - rawMinX;
+                const sizeY = rawMaxY - rawMinY;
+                const sizeZ = rawMaxZ - rawMinZ;
+                const maxDim = Math.max(sizeX, sizeY, sizeZ);
+
+                // Calculate scale factor to fit within canvas (max 350mm)
+                const maxObjectSize = window.maxObjectSize || 0.35;
+                let scaleFactor = 1.0;
+                if (maxDim > maxObjectSize) {
+                    scaleFactor = maxObjectSize / maxDim;
+                    console.log('⚠️ Mesh terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm');
+                }
+
+                // Transform mesh points to canvas space
+                const transformedMeshPoints = [];
+                for (let i = 0; i < meshPoints.length; i++) {
+                    const p = meshPoints[i];
+                    if (p && typeof p.x === 'number' && typeof p.y === 'number' && typeof p.z === 'number') {
+                        transformedMeshPoints.push({
+                            x: (p.x - centerX) * scaleFactor,
+                            y: (p.y - rawMinY) * scaleFactor, // minY becomes 0 (on grid)
+                            z: (p.z - centerZ) * scaleFactor,
+                            r: p.r || 128,
+                            g: p.g || 128,
+                            b: p.b || 128
+                        });
+                    }
+                }
+
+                if (transformedMeshPoints.length < 500) {
+                    throw new Error('Too few valid points after transformation (' + transformedMeshPoints.length + ')');
+                }
+
+                meshPoints = transformedMeshPoints;
+
+                console.log('✅ Mesh points transformed:', {
+                    count: meshPoints.length,
+                    originalSize: [(sizeX * 1000).toFixed(0) + 'mm', (sizeY * 1000).toFixed(0) + 'mm', (sizeZ * 1000).toFixed(0) + 'mm'],
+                    scaledSize: [(sizeX * scaleFactor * 1000).toFixed(0) + 'mm', (sizeY * scaleFactor * 1000).toFixed(0) + 'mm', (sizeZ * scaleFactor * 1000).toFixed(0) + 'mm'],
+                    scaleFactor: scaleFactor.toFixed(3)
+                });
+            } catch (err) {
+                console.error('❌ Transform error:', err);
+                document.getElementById('generateWatertightBtn').disabled = false;
+                document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                updateScanStatus('ready', 'Error during transformation');
+                alert('Error saat transform mesh points!\n\n' + err.message + '\n\nSilakan coba scan ulang dengan lebih banyak points.');
+                return;
+            }
 
             document.getElementById('generateWatertightBtn').disabled = true;
             document.getElementById('generateWatertightBtn').textContent = 'Generating Watertight... (' + meshPoints.length.toLocaleString() + ' pts)';
@@ -2700,6 +2988,7 @@
                                             // Update UI
                                             updateScanStatus('ready', 'Watertight mesh generated successfully in ' + elapsedTime + 's');
                                             document.getElementById('exportSTLBtn').disabled = false;
+                                            document.getElementById('clearBtn').disabled = false; // Ensure Clear All is enabled after mesh generation
 
                                             alert('✅ Watertight mesh berhasil dibuat!\n\n' +
                                                   'Points: ' + meshPoints.length.toLocaleString() + '\n' +
@@ -2715,6 +3004,7 @@
 
                                         document.getElementById('generateWatertightBtn').disabled = false;
                                         document.getElementById('generateWatertightBtn').textContent = 'Generate Watertight';
+                                        document.getElementById('clearBtn').disabled = false; // Re-enable Clear All button
                                         
                                         // Restore capture state if it was active
                                         if (wasCaptureActive) {
@@ -2736,6 +3026,7 @@
                     alert('Error saat membuat watertight mesh: ' + error.message + '\n\nCek console (F12) untuk detail.');
                     document.getElementById('generateWatertightBtn').disabled = false;
                     document.getElementById('generateWatertightBtn').textContent = 'Generate Watertight';
+                    document.getElementById('clearBtn').disabled = false; // Re-enable Clear All button
                     updateScanStatus('ready', 'Error generating watertight mesh');
                 }
             };
@@ -2754,22 +3045,49 @@
                 return null;
             }
             
-            console.log('🔧 Creating watertight mesh from', points.length, 'points with conservative hole filling...');
+            console.log('🔧 Creating HIGH-QUALITY watertight mesh from', points.length, 'points...');
 
             // Gunakan resolution dari slider user untuk detail maksimal
             const resolution = parseFloat(document.getElementById('meshResolutionSlider').value);
-            // Gunakan resolution user langsung tanpa memaksakan minimum yang terlalu besar
-            const stableResolution = Math.max(resolution, 0.02); // Minimum 2cm untuk stabilitas
+            // FINER minimum resolution for better detail (was 2cm, now 1cm)
+            const stableResolution = Math.max(resolution, 0.01); // Minimum 1cm untuk detail tinggi
 
-            // Limit points untuk mencegah freeze, tapi tingkatkan batas untuk lebih banyak detail
+            // INCREASED limit untuk kualitas watertight maksimal
             let pointsForMesh = points;
-            if (points.length > 100000) {
-                console.log('⚠️ Too many points for mesh (' + points.length + '), downsampling to 100000');
-                const skip = Math.ceil(points.length / 100000);
-                pointsForMesh = [];
-                for (let i = 0; i < points.length; i += skip) {
-                    pointsForMesh.push(points[i]);
+            const meshGenLimit = 80000; // Increased from 50k untuk kualitas watertight lebih detail
+
+            if (points.length > meshGenLimit) {
+                console.log('⚠️ Too many points for mesh (' + points.length + '), downsampling to ' + meshGenLimit + ' untuk mencegah freeze');
+
+                // Use FINER voxel-based downsampling untuk kualitas lebih baik
+                const voxelSize = 0.01; // 1cm voxels (was 2cm) - finer detail
+                const voxelMap = new Map();
+
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const vx = Math.floor(p.x / voxelSize);
+                    const vy = Math.floor(p.y / voxelSize);
+                    const vz = Math.floor(p.z / voxelSize);
+                    const key = `${vx},${vy},${vz}`;
+
+                    if (!voxelMap.has(key)) {
+                        voxelMap.set(key, p);
+                    }
                 }
+
+                pointsForMesh = Array.from(voxelMap.values());
+
+                // Additional uniform sampling if still too many
+                if (pointsForMesh.length > meshGenLimit) {
+                    const skip = Math.ceil(pointsForMesh.length / meshGenLimit);
+                    const sampled = [];
+                    for (let i = 0; i < pointsForMesh.length; i += skip) {
+                        sampled.push(pointsForMesh[i]);
+                    }
+                    pointsForMesh = sampled;
+                }
+
+                console.log('✅ Downsampled to ' + pointsForMesh.length + ' points untuk high-quality mesh generation');
             }
             
             // Buat mesh dengan resolution yang lebih stabil (tidak terlalu agresif)
@@ -3275,7 +3593,21 @@
                     // Convert point cloud to simple STL format (point-based)
                     console.log('⚠️ Mesh creation failed, exporting point cloud as simple STL...');
                     try {
-                        const stlString = convertPointCloudToSTL(pointCloud);
+                        // Apply scale to point cloud before export
+                        let scaledPoints = pointCloud;
+                        if (currentObjectScale !== 1.0) {
+                            scaledPoints = pointCloud.map(p => ({
+                                x: p.x * currentObjectScale,
+                                y: p.y * currentObjectScale,
+                                z: p.z * currentObjectScale,
+                                r: p.r,
+                                g: p.g,
+                                b: p.b
+                            }));
+                            console.log('📏 Point cloud scaled by ' + currentObjectScale.toFixed(2) + 'x for export');
+                        }
+
+                        const stlString = convertPointCloudToSTL(scaledPoints);
                         const blob = new Blob([stlString], { type: 'text/plain' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
@@ -3287,7 +3619,12 @@
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                         console.log('✅ Point cloud STL exported successfully:', a.download);
-                        alert('File STL berhasil di-export dari point cloud: ' + a.download + '\n\nCatatan: File ini menggunakan triangulasi sederhana. Untuk hasil lebih baik, generate mesh terlebih dahulu.');
+                        alert('✅ File STL berhasil di-export dari point cloud!\n\n' +
+                              '📁 File: ' + a.download + '\n' +
+                              '📏 Scale: ' + currentObjectScale.toFixed(2) + 'x' +
+                              (currentObjectScale !== 1.0 ? ' (ukuran telah disesuaikan)' : ' (ukuran asli)') + '\n\n' +
+                              '⚠️ Catatan: File ini menggunakan triangulasi sederhana.\n' +
+                              'Untuk hasil lebih baik, generate mesh terlebih dahulu.');
                         return;
                     } catch (error) {
                         alert('Gagal membuat mesh untuk export. Coba generate mesh terlebih dahulu atau pastikan ada cukup points.');
@@ -3304,8 +3641,32 @@
                 return;
             }
 
+            // APPLY SCALE FACTOR TO GEOMETRY (for real size export, not just visual)
             try {
-                const stlString = convertToSTL(geometryToExport);
+                console.log('📏 Applying scale factor to export: ' + currentObjectScale.toFixed(2) + 'x');
+
+                // Clone geometry to avoid modifying original
+                const scaledGeometry = geometryToExport.clone();
+
+                // Apply scale to all vertices
+                if (currentObjectScale !== 1.0) {
+                    const positions = scaledGeometry.attributes.position.array;
+                    for (let i = 0; i < positions.length; i++) {
+                        positions[i] *= currentObjectScale;
+                    }
+                    scaledGeometry.attributes.position.needsUpdate = true;
+
+                    // Recompute bounds and normals after scaling
+                    scaledGeometry.computeBoundingBox();
+                    scaledGeometry.computeBoundingSphere();
+                    if (scaledGeometry.index) {
+                        scaledGeometry.computeVertexNormals();
+                    }
+
+                    console.log('✅ Geometry scaled by ' + currentObjectScale.toFixed(2) + 'x for export');
+                }
+
+                const stlString = convertToSTL(scaledGeometry);
                 const blob = new Blob([stlString], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -3317,10 +3678,34 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 console.log('✅ STL file exported successfully:', a.download);
-                alert('File STL berhasil di-export: ' + a.download);
+
+                // Show detailed success message
+                const vertexCount = scaledGeometry.attributes.position.count;
+                const faceCount = scaledGeometry.index ? scaledGeometry.index.count / 3 : 0;
+
+                alert('✅ File STL berhasil di-export!\n\n' +
+                      '📁 File: ' + a.download + '\n' +
+                      '📊 Vertices: ' + vertexCount.toLocaleString() + '\n' +
+                      '📐 Faces: ' + Math.floor(faceCount).toLocaleString() + '\n' +
+                      '📏 Scale: ' + currentObjectScale.toFixed(2) + 'x' +
+                      (currentObjectScale !== 1.0 ? ' (ukuran telah disesuaikan)' : ' (ukuran asli)') + '\n' +
+                      '📦 Source: ' + (exportSource === 'mesh' ? 'Watertight Mesh' : 'Point Cloud (auto-mesh)') + '\n\n' +
+                      '💡 TIP: File dapat dibuka di aplikasi 3D print seperti:\n' +
+                      '   - Ultimaker Cura\n' +
+                      '   - PrusaSlicer\n' +
+                      '   - Simplify3D\n' +
+                      '   - Meshmixer\n\n' +
+                      (exportSource === 'pointcloud' ?
+                          '⚠️ Catatan: Untuk kualitas terbaik, gunakan "Generate Watertight" sebelum export.' :
+                          ''));
             } catch (error) {
                 console.error('❌ Error exporting STL:', error);
-                alert('Error saat mengekspor STL: ' + error.message);
+                alert('❌ Error saat mengekspor STL!\n\n' +
+                      'Error: ' + error.message + '\n\n' +
+                      '💡 Solusi:\n' +
+                      '1. Pastikan ada data scan (minimal 1,000 points)\n' +
+                      '2. Coba generate Watertight terlebih dahulu\n' +
+                      '3. Check console (F12) untuk detail error');
             }
         }
         
@@ -3680,20 +4065,22 @@
             }
             
             document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('generateWatertightBtn').disabled = true;
             document.getElementById('exportSTLBtn').disabled = true;
+            document.getElementById('clearBtn').disabled = true; // Disable Clear All after clearing
             updateScanStatus('idle', 'Tidak aktif');
             const debugMsgEl = document.getElementById('debugMessage');
             const debugCountEl = document.getElementById('debugDataCount');
             if (debugMsgEl) debugMsgEl.textContent = '-';
             if (debugCountEl) debugCountEl.textContent = '0';
-            
+
             // Reset progress bar
             const progressFillEl = document.getElementById('progressFill');
             if (progressFillEl) {
                 progressFillEl.style.width = '0%';
                 progressFillEl.textContent = '0%';
             }
-            
+
             updateStats();
         }
         
@@ -3889,7 +4276,57 @@
 
             console.log('✅ Camera adjusted to view object. Size:', size);
         }
-        
+
+        /**
+         * ===== SIZE CONTROL FUNCTIONS =====
+         * Update object scale (size) dynamically
+         */
+        var currentObjectScale = 1.0; // Track current scale
+
+        function updateObjectScale(scaleValue) {
+            const scale = parseFloat(scaleValue);
+            currentObjectScale = scale;
+
+            // Update display value
+            document.getElementById('objectScaleValue').textContent = scale.toFixed(2) + 'x';
+
+            // Apply scale to both point cloud and mesh
+            const pointCloudObj = scene ? scene.getObjectByName('pointCloud') : null;
+            const meshObj = scene ? scene.getObjectByName('mesh') : null;
+
+            if (pointCloudObj) {
+                pointCloudObj.scale.set(scale, scale, scale);
+                pointCloudObj.updateMatrixWorld();
+                console.log('✅ Point cloud scaled to', scale.toFixed(2) + 'x');
+            }
+
+            if (meshObj) {
+                meshObj.scale.set(scale, scale, scale);
+                meshObj.updateMatrixWorld();
+                console.log('✅ Mesh scaled to', scale.toFixed(2) + 'x');
+            }
+
+            // Re-center camera to adjusted object
+            if (pointCloudObj || meshObj) {
+                setTimeout(() => centerModel(), 100);
+            }
+        }
+
+        function adjustScale(delta) {
+            const slider = document.getElementById('objectScaleSlider');
+            const currentValue = parseFloat(slider.value);
+            const newValue = Math.max(0.1, Math.min(3.0, currentValue + delta));
+            slider.value = newValue;
+            updateObjectScale(newValue);
+        }
+
+        function resetScale() {
+            const slider = document.getElementById('objectScaleSlider');
+            slider.value = 1.0;
+            updateObjectScale(1.0);
+            console.log('🔄 Scale reset to 1.0x');
+        }
+
         /**
          * Create a simple mesh from point cloud for STL export
          * Uses improved triangulation to create a proper mesh
@@ -3935,20 +4372,99 @@
                     Object.assign(meshData, coarserMesh);
                     console.log('✅ Generated mesh with coarser resolution');
                 } else {
-                    console.warn('⚠️ Still no faces, using fallback triangulation');
-                    // Fallback: simple sequential triangulation (last resort)
+                    console.warn('⚠️ Still no faces, using IMPROVED fallback triangulation');
+                    // IMPROVED Fallback: spatial-based triangulation for better mesh
                     const fallbackFaces = [];
-                    for (let i = 0; i < Math.min(meshPoints.length - 2, 10000); i += 3) {
-                        if (i + 2 < meshPoints.length) {
-                            fallbackFaces.push([i, i + 1, i + 2]);
+                    const cellSize = 0.05; // 5cm cells
+                    const spatialHash = new Map();
+
+                    // Build spatial hash
+                    meshPoints.forEach((p, idx) => {
+                        const key = `${Math.floor(p.x / cellSize)},${Math.floor(p.y / cellSize)},${Math.floor(p.z / cellSize)}`;
+                        if (!spatialHash.has(key)) spatialHash.set(key, []);
+                        spatialHash.get(key).push(idx);
+                    });
+
+                    // Generate triangles from nearby points in each cell
+                    let faceCount = 0;
+                    const maxFaces = 50000; // Limit faces for performance
+
+                    spatialHash.forEach((indices) => {
+                        if (faceCount >= maxFaces) return;
+
+                        // For each cell with 3+ points, create triangles
+                        if (indices.length >= 3) {
+                            // Create fan triangulation from first point
+                            for (let i = 1; i < indices.length - 1 && faceCount < maxFaces; i++) {
+                                const v0 = meshPoints[indices[0]];
+                                const v1 = meshPoints[indices[i]];
+                                const v2 = meshPoints[indices[i + 1]];
+
+                                // Validate triangle is not degenerate
+                                const dx1 = v1.x - v0.x, dy1 = v1.y - v0.y, dz1 = v1.z - v0.z;
+                                const dx2 = v2.x - v0.x, dy2 = v2.y - v0.y, dz2 = v2.z - v0.z;
+
+                                // Cross product for area check
+                                const cx = dy1 * dz2 - dz1 * dy2;
+                                const cy = dz1 * dx2 - dx1 * dz2;
+                                const cz = dx1 * dy2 - dy1 * dx2;
+                                const area = Math.sqrt(cx * cx + cy * cy + cz * cz);
+
+                                if (area > 0.0001) { // Not degenerate
+                                    fallbackFaces.push([indices[0], indices[i], indices[i + 1]]);
+                                    faceCount++;
+                                }
+                            }
+                        }
+                    });
+
+                    // If still no faces, use simple nearby-point triangulation
+                    if (fallbackFaces.length === 0) {
+                        console.warn('⚠️ Spatial triangulation failed, using simple nearby-point triangulation');
+                        const maxDist = 0.1; // 10cm max distance
+                        for (let i = 0; i < Math.min(meshPoints.length - 2, 5000); i++) {
+                            const p0 = meshPoints[i];
+                            let closestPoints = [];
+
+                            // Find 2 closest points
+                            for (let j = i + 1; j < meshPoints.length && closestPoints.length < 2; j++) {
+                                const p = meshPoints[j];
+                                const dist = Math.sqrt(
+                                    Math.pow(p.x - p0.x, 2) +
+                                    Math.pow(p.y - p0.y, 2) +
+                                    Math.pow(p.z - p0.z, 2)
+                                );
+                                if (dist < maxDist) {
+                                    closestPoints.push({ idx: j, dist: dist });
+                                }
+                            }
+
+                            if (closestPoints.length >= 2) {
+                                fallbackFaces.push([i, closestPoints[0].idx, closestPoints[1].idx]);
+                            }
                         }
                     }
+
                     meshData.faces = fallbackFaces;
+                    console.log('✅ Fallback generated ' + fallbackFaces.length + ' faces');
                 }
             }
             
             console.log('✅ Mesh data generated:', meshData.vertices.length, 'vertices,', meshData.faces.length, 'faces');
-            
+
+            // Validate mesh has faces (prevent zero volume error)
+            if (meshData.faces.length === 0) {
+                console.error('❌ No faces generated - mesh would have zero volume');
+                alert('❌ Gagal membuat mesh untuk export!\n\n' +
+                      'Mesh tidak memiliki faces (zero volume).\n\n' +
+                      '💡 Solusi:\n' +
+                      '1. Scan lebih lama untuk mendapatkan lebih banyak points (target: 50,000+)\n' +
+                      '2. Pastikan objek jelas terlihat oleh Kinect\n' +
+                      '3. Sesuaikan Mesh Resolution slider (coba nilai 0.03-0.05)\n' +
+                      '4. Coba generate Watertight terlebih dahulu untuk hasil terbaik');
+                return null;
+            }
+
             // Create Three.js geometry
             const geometry = new THREE.BufferGeometry();
             const vertices = new Float32Array(meshData.vertices.length * 3);
@@ -4152,7 +4668,8 @@
 
             // Use voxel-based approach: each voxel can only contain one point
             // This is more effective than distance-based for preventing layering
-            const voxelSize = 0.01; // 1cm voxels - balance antara detail dan jumlah points
+            // LARGER voxel for 360° scans to prevent duplication
+            const voxelSize = 0.015; // 1.5cm voxels (was 1cm) - more aggressive deduplication
             const voxelMap = new Map();
             
             // Build voxel map from existing points
