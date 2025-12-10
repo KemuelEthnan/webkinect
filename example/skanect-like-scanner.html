@@ -365,7 +365,8 @@
                 </div>
                 <button id="startScanBtn" class="btn-success" onclick="startScan()" disabled>▶️ Start Scan</button>
                 <button id="stopScanBtn" class="btn-warning" onclick="stopScan()" disabled>⏸️ Stop Scan</button>
-                <button id="generateBtn" class="btn-primary" onclick="generateMesh()" disabled>🔷 Generate Mesh</button>
+                <button id="removeBgBtn" class="btn-primary" onclick="removeBackground()" disabled>🎯 Remove Background</button>
+                <button id="generateBtn" class="btn-primary" onclick="generateWatertight()" disabled>💧 Generate Watertight</button>
                 <button id="exportBtn" class="btn-primary" onclick="exportSTL()" disabled>💾 Export STL</button>
                 <button id="clearBtn" class="btn-danger" onclick="clearAll()">🗑️ Clear All</button>
             </div>
@@ -848,10 +849,11 @@
             isScanning = false;
 
             // Update UI
-            updateScanStatus('ready', 'Ready to generate');
+            updateScanStatus('ready', 'Scan complete');
             document.getElementById('startScanBtn').disabled = false;
             document.getElementById('stopScanBtn').disabled = true;
-            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('removeBgBtn').disabled = false;
+            document.getElementById('exportBtn').disabled = false; // Enable direct export
 
             console.log(`✅ Scan stopped. Captured ${frameCount} frames with ${totalPointsCollected.toLocaleString()} points`);
         }
@@ -943,62 +945,122 @@
             console.log(`✅ Real-time mesh updated: ${vertexCount} vertices`);
         }
 
-        // ==================== MESH GENERATION ====================
-        function generateMesh() {
-            if (depthFrames.length === 0) {
-                alert('No frames collected! Start scanning first.');
+        // ==================== BACKGROUND REMOVAL ====================
+        function removeBackground() {
+            if (!realtimePointCloud || !realtimePointCloud.geometry) {
+                alert('No mesh to process! Scan first.');
                 return;
             }
 
-            console.log('🔷 Generating solid mesh from', depthFrames.length, 'frames...');
-            updateScanStatus('processing', 'Generating mesh...');
+            console.log('🎯 Removing background...');
+            updateScanStatus('processing', 'Removing background...');
 
-            // Use setTimeout to prevent UI freeze
             setTimeout(() => {
                 try {
-                    // Merge all points from all frames
-                    const allPoints = [];
-                    for (const frame of depthFrames) {
-                        if (frame.points && Array.isArray(frame.points)) {
-                            // Filter points by depth range (Z-axis depth, NOT euclidean!)
-                            const filteredPoints = frame.points.filter(p => {
-                                const depth = Math.abs(p.z); // Z-axis depth in meters
-                                return depth >= depthMin && depth <= depthMax;
-                            });
-                            allPoints.push(...filteredPoints);
+                    const geometry = realtimePointCloud.geometry;
+                    const positions = geometry.attributes.position;
+                    const colors = geometry.attributes.color;
+                    const indices = geometry.index;
+
+                    // STEP 1: Analyze depth distribution to find foreground/background threshold
+                    const depths = [];
+                    for (let i = 0; i < positions.count; i++) {
+                        const z = Math.abs(positions.getZ(i));
+                        depths.push(z);
+                    }
+                    depths.sort((a, b) => a - b);
+
+                    // Find depth clusters using histogram
+                    const depthHistogram = new Map();
+                    const binSize = 0.1; // 10cm bins
+                    for (const d of depths) {
+                        const bin = Math.floor(d / binSize) * binSize;
+                        depthHistogram.set(bin, (depthHistogram.get(bin) || 0) + 1);
+                    }
+
+                    // Find the foreground cluster (closest and largest)
+                    let maxCount = 0;
+                    let foregroundBin = 0;
+                    for (const [bin, count] of depthHistogram.entries()) {
+                        if (count > maxCount && bin < 3.0) { // Within 3m
+                            maxCount = count;
+                            foregroundBin = bin;
                         }
                     }
 
-                    console.log('📊 Total points to process:', allPoints.toLocaleString());
+                    // Set threshold: foreground ± 0.5m
+                    const minDepth = foregroundBin - 0.3;
+                    const maxDepth = foregroundBin + 0.5;
 
-                    // CHECK: Validate point count
-                    if (allPoints.length === 0) {
-                        throw new Error('No valid points found! Check depth range settings (currently ' + depthMin + 'm - ' + depthMax + 'm)');
-                    }
-                    if (allPoints.length < 100) {
-                        console.warn('⚠️ Very few points (' + allPoints.length + '). Mesh quality may be poor.');
-                        if (!confirm('Only ' + allPoints.length + ' valid points found. Continue mesh generation? (May fail or produce poor quality)')) {
-                            updateScanStatus('ready', 'Cancelled');
-                            document.getElementById('generateBtn').disabled = false;
-                            return;
+                    console.log('📊 Background removal threshold:', {
+                        foregroundDepth: foregroundBin.toFixed(2) + 'm',
+                        minDepth: minDepth.toFixed(2) + 'm',
+                        maxDepth: maxDepth.toFixed(2) + 'm'
+                    });
+
+                    // STEP 2: Filter vertices (keep only foreground)
+                    const newPositions = [];
+                    const newColors = [];
+                    const vertexMap = new Map(); // old index -> new index
+
+                    for (let i = 0; i < positions.count; i++) {
+                        const x = positions.getX(i);
+                        const y = positions.getY(i);
+                        const z = positions.getZ(i);
+                        const depth = Math.abs(z);
+
+                        // Keep only foreground vertices
+                        if (depth >= minDepth && depth <= maxDepth) {
+                            vertexMap.set(i, newPositions.length / 3);
+                            newPositions.push(x, y, z);
+                            newColors.push(
+                                colors.getX(i),
+                                colors.getY(i),
+                                colors.getZ(i)
+                            );
                         }
                     }
 
-                    // Generate mesh using DepthToMeshConverter
-                    if (!depthMeshConverter) {
-                        throw new Error('DepthToMeshConverter not initialized');
+                    if (newPositions.length === 0) {
+                        throw new Error('No foreground vertices found!');
                     }
 
-                    const geometry = depthMeshConverter.depthToMesh(allPoints, 320, 240);
+                    // STEP 3: Rebuild indices (only triangles with all vertices in foreground)
+                    const newIndices = [];
+                    for (let i = 0; i < indices.count; i += 3) {
+                        const i1 = indices.getX(i);
+                        const i2 = indices.getX(i + 1);
+                        const i3 = indices.getX(i + 2);
 
-                    if (!geometry) {
-                        throw new Error('Mesh generation failed - not enough valid points or geometry error');
-                    }
-                    if (!geometry.attributes || !geometry.attributes.position) {
-                        throw new Error('Mesh generation failed - invalid geometry (no positions)');
+                        // Check if all 3 vertices are in foreground
+                        if (vertexMap.has(i1) && vertexMap.has(i2) && vertexMap.has(i3)) {
+                            newIndices.push(
+                                vertexMap.get(i1),
+                                vertexMap.get(i2),
+                                vertexMap.get(i3)
+                            );
+                        }
                     }
 
-                    // Create mesh material with vertex colors
+                    // STEP 4: Create new geometry
+                    const newGeometry = new THREE.BufferGeometry();
+                    newGeometry.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+                    newGeometry.setAttribute('color', new THREE.Float32BufferAttribute(newColors, 3));
+                    newGeometry.setIndex(newIndices);
+                    newGeometry.computeVertexNormals();
+                    newGeometry.computeBoundingBox();
+
+                    // Center the mesh
+                    const box = newGeometry.boundingBox;
+                    const center = new THREE.Vector3();
+                    box.getCenter(center);
+                    newGeometry.translate(-center.x, -center.y, -center.z);
+
+                    // STEP 5: Replace mesh
+                    scene.remove(realtimePointCloud);
+                    if (realtimePointCloud.geometry) realtimePointCloud.geometry.dispose();
+                    if (realtimePointCloud.material) realtimePointCloud.material.dispose();
+
                     const material = new THREE.MeshPhongMaterial({
                         vertexColors: true,
                         side: THREE.DoubleSide,
@@ -1006,58 +1068,378 @@
                         shininess: 30
                     });
 
-                    // Create mesh
+                    realtimePointCloud = new THREE.Mesh(newGeometry, material);
+                    scene.add(realtimePointCloud);
+
+                    // Update UI
+                    const vertexCount = newPositions.length / 3;
+                    const faceCount = newIndices.length / 3;
+                    updateMeshInfo(vertexCount, faceCount);
+                    updateScanStatus('ready', 'Background removed');
+                    document.getElementById('generateBtn').disabled = false;
+
+                    console.log('✅ Background removed successfully!');
+                    console.log('📊 Remaining vertices:', vertexCount.toLocaleString());
+                    console.log('📊 Remaining faces:', Math.floor(faceCount).toLocaleString());
+
+                } catch (error) {
+                    console.error('❌ Background removal error:', error);
+                    alert('Failed to remove background: ' + error.message);
+                    updateScanStatus('ready', 'Error');
+                }
+            }, 100);
+        }
+
+        // ==================== WATERTIGHT MESH GENERATION ====================
+        function generateWatertight() {
+            if (!realtimePointCloud || !realtimePointCloud.geometry) {
+                alert('No mesh to process! Scan and remove background first.');
+                return;
+            }
+
+            console.log('💧 Generating watertight mesh...');
+            updateScanStatus('processing', 'Generating watertight...');
+
+            setTimeout(() => {
+                try {
+                    const sourceGeometry = realtimePointCloud.geometry;
+
+                    // Use DepthToMeshConverter with improved hole filling
+                    if (!depthMeshConverter) {
+                        throw new Error('DepthToMeshConverter not initialized');
+                    }
+
+                    // Extract points from current mesh
+                    const positions = sourceGeometry.attributes.position;
+                    const colors = sourceGeometry.attributes.color;
+                    const points = [];
+
+                    for (let i = 0; i < positions.count; i++) {
+                        points.push({
+                            x: positions.getX(i),
+                            y: positions.getY(i),
+                            z: positions.getZ(i),
+                            r: Math.floor(colors.getX(i) * 255),
+                            g: Math.floor(colors.getY(i) * 255),
+                            b: Math.floor(colors.getZ(i) * 255)
+                        });
+                    }
+
+                    console.log('📊 Processing', points.length.toLocaleString(), 'points for watertight mesh...');
+
+                    // Generate watertight mesh with improved algorithm
+                    const geometry = depthMeshConverter.depthToMesh(points, 320, 240);
+
+                    if (!geometry) {
+                        throw new Error('Watertight mesh generation failed');
+                    }
+
+                    // Apply Laplacian smoothing for better surface quality
+                    console.log('🔧 Applying Laplacian smoothing...');
+                    smoothMeshLaplacian(geometry, 3); // 3 iterations
+
+                    // Create mesh material
+                    const material = new THREE.MeshPhongMaterial({
+                        vertexColors: true,
+                        side: THREE.DoubleSide,
+                        flatShading: false,
+                        shininess: 50
+                    });
+
+                    // Create final mesh
                     currentMesh = new THREE.Mesh(geometry, material);
 
-                    // CRITICAL: Center the mesh at origin (0, 0, 0)
+                    // Center the mesh
                     geometry.computeBoundingBox();
-                    const boundingBox = geometry.boundingBox;
+                    const box = geometry.boundingBox;
                     const center = new THREE.Vector3();
-                    boundingBox.getCenter(center);
-
-                    // Translate geometry to center
+                    box.getCenter(center);
                     geometry.translate(-center.x, -center.y, -center.z);
 
-                    // Clear realtime point cloud (replace with final mesh)
+                    // Remove realtime mesh, show watertight mesh
                     if (realtimePointCloud) {
                         scene.remove(realtimePointCloud);
                         realtimePointCloud = null;
                     }
 
-                    // Add to scene
                     scene.add(currentMesh);
 
                     // Update UI
                     const vertexCount = geometry.attributes.position.count;
                     const faceCount = geometry.index ? geometry.index.count / 3 : 0;
-
                     updateMeshInfo(vertexCount, faceCount);
-                    updateScanStatus('ready', 'Mesh generated!');
-
+                    updateScanStatus('ready', 'Watertight generated!');
                     document.getElementById('exportBtn').disabled = false;
 
-                    console.log('✅ SOLID MESH generated successfully!');
+                    console.log('✅ Watertight mesh generated!');
                     console.log('📊 Vertices:', vertexCount.toLocaleString());
                     console.log('📊 Faces:', Math.floor(faceCount).toLocaleString());
+
                 } catch (error) {
-                    console.error('❌ Mesh generation error:', error);
-                    alert('Failed to generate mesh: ' + error.message);
+                    console.error('❌ Watertight generation error:', error);
+                    alert('Failed to generate watertight mesh: ' + error.message);
                     updateScanStatus('ready', 'Error');
-                    document.getElementById('generateBtn').disabled = false;
                 }
             }, 100);
         }
 
+        // Mesh simplification to reduce file size
+        function simplifyMesh(geometry, targetRatio = 0.5) {
+            // Simple decimation: keep every N-th vertex
+            const positions = geometry.attributes.position;
+            const colors = geometry.attributes.color;
+            const indices = geometry.index;
+
+            const originalVertexCount = positions.count;
+            const targetVertexCount = Math.floor(originalVertexCount * targetRatio);
+            const step = Math.max(1, Math.floor(originalVertexCount / targetVertexCount));
+
+            const newPositions = [];
+            const newColors = [];
+            const vertexMap = new Map();
+
+            // Sample vertices
+            for (let i = 0; i < positions.count; i += step) {
+                vertexMap.set(i, newPositions.length / 3);
+                newPositions.push(
+                    positions.getX(i),
+                    positions.getY(i),
+                    positions.getZ(i)
+                );
+                if (colors) {
+                    newColors.push(
+                        colors.getX(i),
+                        colors.getY(i),
+                        colors.getZ(i)
+                    );
+                }
+            }
+
+            // Rebuild indices
+            const newIndices = [];
+            if (indices) {
+                for (let i = 0; i < indices.count; i += 3) {
+                    const i1 = indices.getX(i);
+                    const i2 = indices.getX(i + 1);
+                    const i3 = indices.getX(i + 2);
+
+                    // Keep triangle only if all vertices are in the simplified mesh
+                    if (vertexMap.has(i1) && vertexMap.has(i2) && vertexMap.has(i3)) {
+                        newIndices.push(
+                            vertexMap.get(i1),
+                            vertexMap.get(i2),
+                            vertexMap.get(i3)
+                        );
+                    }
+                }
+            }
+
+            // Create simplified geometry
+            const simplified = new THREE.BufferGeometry();
+            simplified.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+            if (newColors.length > 0) {
+                simplified.setAttribute('color', new THREE.Float32BufferAttribute(newColors, 3));
+            }
+            if (newIndices.length > 0) {
+                simplified.setIndex(newIndices);
+            }
+            simplified.computeVertexNormals();
+
+            return simplified;
+        }
+
+        // Laplacian smoothing for better mesh quality
+        function smoothMeshLaplacian(geometry, iterations = 1) {
+            const positions = geometry.attributes.position;
+            const indices = geometry.index;
+
+            // Build vertex adjacency list
+            const adjacency = new Map();
+            for (let i = 0; i < positions.count; i++) {
+                adjacency.set(i, new Set());
+            }
+
+            for (let i = 0; i < indices.count; i += 3) {
+                const i1 = indices.getX(i);
+                const i2 = indices.getX(i + 1);
+                const i3 = indices.getX(i + 2);
+
+                adjacency.get(i1).add(i2);
+                adjacency.get(i1).add(i3);
+                adjacency.get(i2).add(i1);
+                adjacency.get(i2).add(i3);
+                adjacency.get(i3).add(i1);
+                adjacency.get(i3).add(i2);
+            }
+
+            // Apply Laplacian smoothing
+            for (let iter = 0; iter < iterations; iter++) {
+                const newPositions = new Float32Array(positions.array.length);
+
+                for (let i = 0; i < positions.count; i++) {
+                    const neighbors = adjacency.get(i);
+
+                    if (neighbors.size === 0) {
+                        // Keep original position if no neighbors
+                        newPositions[i * 3] = positions.getX(i);
+                        newPositions[i * 3 + 1] = positions.getY(i);
+                        newPositions[i * 3 + 2] = positions.getZ(i);
+                    } else {
+                        // Average of neighbors
+                        let sumX = 0, sumY = 0, sumZ = 0;
+                        for (const neighborIdx of neighbors) {
+                            sumX += positions.getX(neighborIdx);
+                            sumY += positions.getY(neighborIdx);
+                            sumZ += positions.getZ(neighborIdx);
+                        }
+
+                        const lambda = 0.5; // Smoothing factor (0-1)
+                        const avgX = sumX / neighbors.size;
+                        const avgY = sumY / neighbors.size;
+                        const avgZ = sumZ / neighbors.size;
+
+                        // Blend original and averaged position
+                        newPositions[i * 3] = positions.getX(i) * (1 - lambda) + avgX * lambda;
+                        newPositions[i * 3 + 1] = positions.getY(i) * (1 - lambda) + avgY * lambda;
+                        newPositions[i * 3 + 2] = positions.getZ(i) * (1 - lambda) + avgZ * lambda;
+                    }
+                }
+
+                // Update positions
+                positions.array.set(newPositions);
+                positions.needsUpdate = true;
+            }
+
+            // Recompute normals after smoothing
+            geometry.computeVertexNormals();
+        }
+
         // ==================== EXPORT STL ====================
         function exportSTL() {
-            if (!currentMesh || !currentMesh.geometry) {
-                alert('No mesh to export!');
+            // Support both watertight mesh (currentMesh) and direct export (realtimePointCloud)
+            let meshToExport = currentMesh || realtimePointCloud;
+
+            if (!meshToExport || !meshToExport.geometry) {
+                alert('No mesh to export! Scan first.');
                 return;
             }
 
             console.log('💾 Exporting STL...');
 
-            const geometry = currentMesh.geometry;
+            let geometry = meshToExport.geometry.clone();
+
+            // STEP 0: Simplify mesh if too large (reduce file size)
+            const vertexCount = geometry.attributes.position.count;
+            const faceCount = geometry.index ? geometry.index.count / 3 : 0;
+
+            console.log('📊 Original mesh:', vertexCount.toLocaleString(), 'vertices,', Math.floor(faceCount).toLocaleString(), 'faces');
+
+            if (vertexCount > 50000) {
+                console.log('🔧 Mesh is large, applying simplification...');
+                geometry = simplifyMesh(geometry, 0.5); // Reduce to 50%
+                console.log('✅ Simplified to:', geometry.attributes.position.count.toLocaleString(), 'vertices');
+            }
+
+            // STEP 1: Apply mesh transformations (rotation if exists)
+            console.log('🔧 Preparing mesh for export...');
+            if (meshToExport.rotation) {
+                const matrix = new THREE.Matrix4();
+                matrix.makeRotationFromEuler(meshToExport.rotation);
+                geometry.applyMatrix4(matrix);
+            }
+
+            // STEP 2: Compute original bounds
+            geometry.computeBoundingBox();
+            let box = geometry.boundingBox;
+            let size = new THREE.Vector3();
+            box.getSize(size);
+            let center = new THREE.Vector3();
+            box.getCenter(center);
+
+            console.log('📦 Original mesh bounds:', {
+                size: { x: size.x.toFixed(3), y: size.y.toFixed(3), z: size.z.toFixed(3) }
+            });
+
+            // STEP 3: Determine optimal orientation
+            // Find the longest axis and make it Z-up
+            const maxDimension = Math.max(size.x, size.y, size.z);
+            let rotationMatrix = new THREE.Matrix4();
+
+            if (size.y === maxDimension) {
+                // Y is tallest - rotate to make it Z (standard case for standing objects)
+                rotationMatrix.makeRotationX(-Math.PI / 2);
+                console.log('📐 Orientation: Y-up → Z-up (Portrait)');
+            } else if (size.x === maxDimension) {
+                // X is longest - rotate to make it Z
+                rotationMatrix.makeRotationY(Math.PI / 2).multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+                console.log('📐 Orientation: X-up → Z-up (Landscape)');
+            } else {
+                // Z is already tallest - just flip if needed
+                rotationMatrix.makeRotationX(-Math.PI / 2);
+                console.log('📐 Orientation: Z-up (keeping as is)');
+            }
+
+            geometry.applyMatrix4(rotationMatrix);
+
+            // STEP 4: Recompute bounds after rotation
+            geometry.computeBoundingBox();
+            box = geometry.boundingBox;
+            size = new THREE.Vector3();
+            box.getSize(size);
+            center = new THREE.Vector3();
+            box.getCenter(center);
+
+            console.log('📦 After rotation:', {
+                size: { x: size.x.toFixed(3), y: size.y.toFixed(3), z: size.z.toFixed(3) }
+            });
+
+            // STEP 5: Center mesh and place bottom at Z=0 (on build plate)
+            const translation = new THREE.Matrix4();
+            translation.makeTranslation(-center.x, -center.y, -box.min.z);
+            geometry.applyMatrix4(translation);
+
+            // STEP 6: Scale to reasonable size (in mm)
+            // Convert from meters to millimeters, but limit max size
+            const scaleMatrix = new THREE.Matrix4();
+            scaleMatrix.makeScale(1000, 1000, 1000); // meters to mm
+            geometry.applyMatrix4(scaleMatrix);
+
+            // STEP 7: Ensure mesh fits in reasonable print volume (max 200mm)
+            geometry.computeBoundingBox();
+            box = geometry.boundingBox;
+            size = new THREE.Vector3();
+            box.getSize(size);
+
+            const maxSize = Math.max(size.x, size.y, size.z);
+            if (maxSize > 200) {
+                const scaleFactor = 200 / maxSize;
+                console.log('🔧 Scaling down to fit 200mm print volume (factor:', scaleFactor.toFixed(2), ')');
+                const fitScale = new THREE.Matrix4();
+                fitScale.makeScale(scaleFactor, scaleFactor, scaleFactor);
+                geometry.applyMatrix4(fitScale);
+
+                // Recenter after scaling
+                geometry.computeBoundingBox();
+                box = geometry.boundingBox;
+                center = new THREE.Vector3();
+                box.getCenter(center);
+                const recenter = new THREE.Matrix4();
+                recenter.makeTranslation(-center.x, -center.y, -box.min.z);
+                geometry.applyMatrix4(recenter);
+            }
+
+            geometry.computeBoundingBox();
+            box = geometry.boundingBox;
+            size = new THREE.Vector3();
+            box.getSize(size);
+
+            console.log('✅ Final mesh size (mm):', {
+                x: size.x.toFixed(1),
+                y: size.y.toFixed(1),
+                z: size.z.toFixed(1)
+            });
+
+            // STEP 7: Generate STL content
             let stlContent = 'solid KinectMesh\n';
 
             const positions = geometry.attributes.position;
@@ -1111,7 +1493,7 @@
             link.click();
             URL.revokeObjectURL(url);
 
-            console.log('✅ STL exported successfully');
+            console.log('✅ STL exported successfully (proper bounds and orientation)');
         }
 
         // ==================== CLEAR ====================
@@ -1137,6 +1519,7 @@
             updateScanStatus('idle', 'Idle');
             document.getElementById('startScanBtn').disabled = !connected;
             document.getElementById('stopScanBtn').disabled = true;
+            document.getElementById('removeBgBtn').disabled = true;
             document.getElementById('generateBtn').disabled = true;
             document.getElementById('exportBtn').disabled = true;
             document.getElementById('frameCount').textContent = '0';

@@ -77,3 +77,12 @@ The file does not contain any geometry data.
 Saya ingin anda membuat beberapa fitur baru : 1. Saya bisa mengatur ukuran dari objek 3d yang ada diatas kanvas 3js, jadi setelah scan saya bisa mengatur ukuran dari objek 3d. 2. Jadi saat scan tidak apa-apa ada background yang tercetak, tetapi setelah scan selesai atau saya stop scan otomatis nanti background yang tercetak langsung hilang tersisa objek 3d saja. 3. Disini saya sudah ekspor dari hasil scan saya, tetapi belum saya lakukan watertight. Berhasil di ekspor tetapi saat saya buka file nya di aplikasi 3d print tidak bisa dibuka dengan notif seperti ini: Objects with zero volume removed, The file does not contain any geometry data. Bagaimana Solusi untuuk permasalahan ini? Saya juga ingin langsung ekspor tanpa lakukan watertight.
 
 1. Size Control: Hanya mempengaruh tampilan, tidak mengubah data asli. Disini anda berkata hanya mempengaruhi tampilan, sementara saya ingin agar objek 3d yang diatur scale nya juga mempengaruhi besar kecilnya ukuran 3d yang nanti akan di ekspor
+
+Berikut revisinya: 1. Disini saya ingin agar objek yang selesai di scan dan dilakukan watertight memiliki ouput yang berbentuk, bagus, dan tidak berantakan seperti hasil watertight skanect. Karena yang sekarang terjadi dari objek scan awal yang hasilnya detail dan bagus, Ketika di watertight malah menjadi tidak karuan bentuknya seperti ini , nah saya ingin anda memperbaikinya. 2. Disini Ketika saya ekspor dari hasil scan, dan coba buka file nya, ternyata file nya terpotong banyak (Mungkin karena ukuran kanvas dan objek hasil scan) dan bentuknya juga selalu landscape, padahal ketika saya ekspor dari skanect hasilnya menyesuaikan dari objek 3d nya apakah berbentuk portrait atau landscape.
+
+, juga buatlah fitur di halaman normal yang fiturnya      
+  pada kamera ini [Image #1] nanti ada deteksi dan ada teks yang muncul dari kondisi ketika ada objek manusia yang terekam nanti  
+  akan ada indikator teks yang menjadi pertanda posisi dari manusia itu ideal untuk dilakukan scan, atau objek manusia terlalu    
+  jauh dari kamera, atau objek terlalu dekat dari kamera kinnect 
+
+Bisakah anda memperbaiki pada index.html, yaitu pada bagian ekspor stl. Disini ketika saya sudah selesai scan dan klik ekspor stl, hasilnya sangat beda dari objek 3d kanvas 3js yang ada di web dengan yang saya buka hasil file download ekspor. 
