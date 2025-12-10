@@ -833,6 +833,8 @@
         var useICP = false; // Disabled by default - too CPU intensive!
         var useNoiseFilter = false; // Disabled by default - too CPU intensive!
         var kinectPosition = { x: 0, y: 0, z: 0 };
+        // Simpan transformasi terakhir (centering + scaling) agar ekspor sama dengan tampilan
+        var lastTransformParams = null;
 
         // Throttling to prevent freeze
         var lastProcessTime = 0;
@@ -1861,6 +1863,15 @@
                 console.warn('⚠️ Point cloud terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm (scale: ' + scaleFactor.toFixed(3) + ')');
             }
 
+            // Simpan parameter transformasi untuk dipakai ulang (export STL dll)
+            lastTransformParams = {
+                centerX,
+                centerY,
+                centerZ,
+                minY,
+                scaleFactor
+            };
+
             console.log('📊 Transformation params:', {
                 center: [centerX, centerY, centerZ],
                 size: [sizeX, sizeY, sizeZ],
@@ -2886,6 +2897,15 @@
 
                 meshPoints = transformedMeshPoints;
 
+                // Simpan transformasi terakhir untuk ekspor (supaya identik dengan tampilan)
+                lastTransformParams = {
+                    centerX,
+                    centerY,
+                    centerZ,
+                    minY: rawMinY,
+                    scaleFactor
+                };
+
                 console.log('✅ Mesh points transformed:', {
                     count: meshPoints.length,
                     originalSize: [(sizeX * 1000).toFixed(0) + 'mm', (sizeY * 1000).toFixed(0) + 'mm', (sizeZ * 1000).toFixed(0) + 'mm'],
@@ -3567,16 +3587,131 @@
             
             return indices;
         }
+
+        /**
+         * Ambil parameter transformasi terakhir atau hitung ulang jika belum ada.
+         * Digunakan agar ekspor STL identik dengan tampilan di kanvas.
+         */
+        function getTransformParamsForExport(points) {
+            const hasCached =
+                lastTransformParams &&
+                Number.isFinite(lastTransformParams.centerX) &&
+                Number.isFinite(lastTransformParams.centerY) &&
+                Number.isFinite(lastTransformParams.centerZ) &&
+                Number.isFinite(lastTransformParams.minY) &&
+                Number.isFinite(lastTransformParams.scaleFactor);
+
+            if (hasCached) {
+                return lastTransformParams;
+            }
+
+            if (!points || points.length < 3) return null;
+
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                if (!p) continue;
+                const x = p.x || 0;
+                const y = p.y || 0;
+                const z = p.z || 0;
+                minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+                minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+            }
+
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const centerZ = (minZ + maxZ) / 2;
+            const sizeX = maxX - minX;
+            const sizeY = maxY - minY;
+            const sizeZ = maxZ - minZ;
+            const maxDim = Math.max(sizeX, sizeY, sizeZ);
+
+            const maxObjectSize = window.maxObjectSize || 0.35;
+            let scaleFactor = 1.0;
+            if (maxDim > maxObjectSize) {
+                scaleFactor = maxObjectSize / maxDim;
+            }
+
+            lastTransformParams = { centerX, centerY, centerZ, minY, scaleFactor };
+            return lastTransformParams;
+        }
+
+        /**
+         * Terapkan transformasi kanvas + scale dan optional offset posisi/scale objek.
+         */
+        function applyTransformToPoints(points, transformParams) {
+            if (!points || points.length === 0) return [];
+            const t = transformParams || getTransformParamsForExport(points);
+            if (!t) return points;
+
+            const applyScale = (v) => Number.isFinite(v) ? v : 0;
+            const scale = applyScale(t.scaleFactor);
+            const cx = applyScale(t.centerX);
+            const cy = applyScale(t.minY);
+            const cz = applyScale(t.centerZ);
+
+            const base = points.map(p => ({
+                x: (p.x - cx) * scale,
+                y: (p.y - cy) * scale,
+                z: (p.z - cz) * scale,
+                r: p.r,
+                g: p.g,
+                b: p.b
+            }));
+
+            // Apply user-controlled scale + posisi (slider)
+            if (currentObjectScale !== 1.0) {
+                base.forEach(p => {
+                    p.x *= currentObjectScale;
+                    p.y *= currentObjectScale;
+                    p.z *= currentObjectScale;
+                });
+            }
+            if (window.objectPosition) {
+                base.forEach(p => {
+                    p.x += window.objectPosition.x || 0;
+                    p.y += window.objectPosition.y || 0;
+                    p.z += window.objectPosition.z || 0;
+                });
+            }
+
+            return base;
+        }
+
+        /**
+         * Ambil posisi world-space dari objek Three.js (mesh atau points)
+         * supaya STL mengikuti transformasi di scene.
+         */
+        function extractWorldPointsFromObject(obj) {
+            if (!obj || !obj.geometry || !obj.geometry.attributes || !obj.geometry.attributes.position) return null;
+            obj.updateMatrixWorld(true);
+            const pos = obj.geometry.attributes.position;
+            const pts = [];
+            const tmp = new THREE.Vector3();
+            for (let i = 0; i < pos.count; i++) {
+                tmp.fromBufferAttribute(pos, i);
+                tmp.applyMatrix4(obj.matrixWorld);
+                pts.push({ x: tmp.x, y: tmp.y, z: tmp.z });
+            }
+            return pts;
+        }
         
         function exportSTL() {
             console.log('💾 Exporting STL file...');
 
             let geometryToExport = null;
             let exportSource = '';
+            let sourceObject = null;
 
             // Check if we have mesh, otherwise create temporary mesh from point cloud
-            if (mesh && mesh.geometry) {
-                geometryToExport = mesh.geometry;
+            const meshObj = scene ? scene.getObjectByName('mesh') : mesh;
+            if (meshObj && meshObj.geometry) {
+                geometryToExport = meshObj.geometry;
+                sourceObject = meshObj;
                 exportSource = 'mesh';
                 console.log('📦 Exporting from existing mesh');
             } else if (pointCloud.length > 0) {
@@ -3586,28 +3721,33 @@
                 // Create temporary simple mesh from point cloud
                 const tempMesh = createSimpleMeshForExport(pointCloud);
                 if (tempMesh && tempMesh.geometry) {
+                    // Samakan transform dengan kontrol user
+                    if (window.objectPosition) {
+                        tempMesh.position.set(window.objectPosition.x || 0, window.objectPosition.y || 0, window.objectPosition.z || 0);
+                    }
+                    tempMesh.scale.set(currentObjectScale, currentObjectScale, currentObjectScale);
                     geometryToExport = tempMesh.geometry;
+                    sourceObject = tempMesh;
                     console.log('✅ Temporary mesh created for export');
                 } else {
                     // If mesh creation fails, try to export as point cloud directly
                     // Convert point cloud to simple STL format (point-based)
                     console.log('⚠️ Mesh creation failed, exporting point cloud as simple STL...');
                     try {
-                        // Apply scale to point cloud before export
-                        let scaledPoints = pointCloud;
-                        if (currentObjectScale !== 1.0) {
-                            scaledPoints = pointCloud.map(p => ({
-                                x: p.x * currentObjectScale,
-                                y: p.y * currentObjectScale,
-                                z: p.z * currentObjectScale,
-                                r: p.r,
-                                g: p.g,
-                                b: p.b
-                            }));
-                            console.log('📏 Point cloud scaled by ' + currentObjectScale.toFixed(2) + 'x for export');
+                        // Gunakan point cloud yang sudah ditransformasi ke world-space bila ada
+                        let pointsForExport = pointCloud;
+                        const pointCloudObj = scene ? scene.getObjectByName('pointCloud') : null;
+                        const worldPoints = extractWorldPointsFromObject(pointCloudObj);
+                        if (worldPoints && worldPoints.length > 0) {
+                            pointsForExport = worldPoints;
+                            console.log('📍 Using world-space point cloud from scene for export');
+                        } else {
+                            const transformParams = getTransformParamsForExport(pointCloud);
+                            pointsForExport = applyTransformToPoints(pointCloud, transformParams);
+                            console.log('📍 Applied cached transform to point cloud for export');
                         }
 
-                        const stlString = convertPointCloudToSTL(scaledPoints);
+                        const stlString = convertPointCloudToSTL(pointsForExport);
                         const blob = new Blob([stlString], { type: 'text/plain' });
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
@@ -3641,32 +3781,17 @@
                 return;
             }
 
-            // APPLY SCALE FACTOR TO GEOMETRY (for real size export, not just visual)
             try {
-                console.log('📏 Applying scale factor to export: ' + currentObjectScale.toFixed(2) + 'x');
+                console.log('📏 Baking world transform into export geometry...');
 
-                // Clone geometry to avoid modifying original
-                const scaledGeometry = geometryToExport.clone();
-
-                // Apply scale to all vertices
-                if (currentObjectScale !== 1.0) {
-                    const positions = scaledGeometry.attributes.position.array;
-                    for (let i = 0; i < positions.length; i++) {
-                        positions[i] *= currentObjectScale;
-                    }
-                    scaledGeometry.attributes.position.needsUpdate = true;
-
-                    // Recompute bounds and normals after scaling
-                    scaledGeometry.computeBoundingBox();
-                    scaledGeometry.computeBoundingSphere();
-                    if (scaledGeometry.index) {
-                        scaledGeometry.computeVertexNormals();
-                    }
-
-                    console.log('✅ Geometry scaled by ' + currentObjectScale.toFixed(2) + 'x for export');
+                // Clone geometry and bake world transform (position/rotation/scale)
+                const geometryWithTransform = geometryToExport.clone();
+                if (sourceObject) {
+                    sourceObject.updateMatrixWorld(true);
+                    geometryWithTransform.applyMatrix4(sourceObject.matrixWorld);
                 }
 
-                const stlString = convertToSTL(scaledGeometry);
+                const stlString = convertToSTL(geometryWithTransform);
                 const blob = new Blob([stlString], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -4356,6 +4481,13 @@
                 console.log('📉 Downsampled to', meshPoints.length, 'points for export (uniform sampling)');
             }
             
+            // Terapkan transformasi yang sama dengan tampilan kanvas agar ekspor konsisten
+            const transformParams = getTransformParamsForExport(meshPoints);
+            if (transformParams) {
+                meshPoints = applyTransformToPoints(meshPoints, transformParams);
+                console.log('✅ Applied canvas transform to mesh export points');
+            }
+
             // Use improved mesh generation from pointcloud processor
             // Use finer resolution for better quality mesh
             const baseResolution = parseFloat(document.getElementById('meshResolutionSlider')?.value || 0.05);
