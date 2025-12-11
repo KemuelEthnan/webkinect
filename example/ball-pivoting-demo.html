@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kinect Ball Pivoting Mesh - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #sidebar {
+            width: 350px;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #viewport {
+            flex: 1;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 20px;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .section h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 5px;
+            color: #ddd;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            font-size: 13px;
+        }
+
+        input[type="number"]::placeholder,
+        select option {
+            color: #888;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-transform: uppercase;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            color: white;
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+
+        .status-info {
+            background: rgba(79, 172, 254, 0.2);
+            border-left: 3px solid #4facfe;
+        }
+
+        .status-success {
+            background: rgba(17, 153, 142, 0.2);
+            border-left: 3px solid #11998e;
+        }
+
+        .status-error {
+            background: rgba(235, 51, 73, 0.2);
+            border-left: 3px solid #eb3349;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        #loading {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid white;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .value-display {
+            display: inline-block;
+            float: right;
+            font-weight: bold;
+            color: #4facfe;
+        }
+
+        .info-box {
+            background: rgba(79, 172, 254, 0.1);
+            border-left: 3px solid #4facfe;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="sidebar">
+            <h1>🔷 Ball Pivoting Mesh</h1>
+            <p class="subtitle">Kinect 3D Scanner with Open3D</p>
+
+            <!-- Server Status -->
+            <div class="section">
+                <h2>📡 Server Status</h2>
+                <div id="serverStatus" class="status status-info">
+                    Checking server...
+                </div>
+                <button class="btn-info" onclick="checkServer()">🔄 Check Server</button>
+            </div>
+
+            <!-- Connection -->
+            <div class="section">
+                <h2>🔌 Kinect Connection</h2>
+                <div class="control-group">
+                    <label for="serverUrl">WebSocket Server:</label>
+                    <input type="text" id="serverUrl" value="ws://localhost:8181" placeholder="ws://localhost:8181">
+                </div>
+                <button class="btn-primary" id="connectBtn" onclick="toggleConnection()">
+                    📡 Connect to Kinect
+                </button>
+                <div id="connectionStatus" class="status status-info">
+                    Disconnected
+                </div>
+            </div>
+
+            <!-- Ball Pivoting Settings -->
+            <div class="section">
+                <h2>⚙️ Ball Pivoting Settings</h2>
+
+                <div class="control-group">
+                    <label>
+                        Radius Multiplier: <span class="value-display" id="radiusMultiplierValue">1.5</span>
+                    </label>
+                    <input type="range" id="radiusMultiplier" min="1.0" max="3.0" step="0.1" value="1.5"
+                           oninput="updateRadiusMultiplier(this.value)">
+                    <small style="color: #aaa;">Ukuran ball untuk pivoting</small>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        Number of Radii: <span class="value-display" id="numRadiiValue">2</span>
+                    </label>
+                    <input type="range" id="numRadii" min="1" max="5" step="1" value="2"
+                           oninput="updateNumRadii(this.value)">
+                    <small style="color: #aaa;">Jumlah variasi radius</small>
+                </div>
+
+                <div class="control-group">
+                    <label for="outputFormat">Output Format:</label>
+                    <select id="outputFormat" onchange="updateOutputFormat(this.value)">
+                        <option value="ply">PLY (Recommended)</option>
+                        <option value="obj">OBJ</option>
+                    </select>
+                </div>
+
+                <div class="info-box">
+                    💡 <strong>Tips:</strong> Radius yang lebih besar menghasilkan mesh yang lebih halus tetapi mungkin kehilangan detail kecil.
+                </div>
+            </div>
+
+            <!-- Scanning Controls -->
+            <div class="section">
+                <h2>📸 Scanning Controls</h2>
+                <button class="btn-success" id="generateBtn" onclick="generateMesh()" disabled>
+                    🚀 Generate Ball Pivoting Mesh
+                </button>
+                <button class="btn-danger" onclick="clearScene()">
+                    🗑️ Clear Scene
+                </button>
+                <button class="btn-info" onclick="downloadMesh()">
+                    💾 Download Mesh
+                </button>
+            </div>
+
+            <!-- Statistics -->
+            <div class="section">
+                <h2>📊 Statistics</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Points</div>
+                        <div class="stat-value" id="pointCount">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Vertices</div>
+                        <div class="stat-value" id="vertexCount">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Triangles</div>
+                        <div class="stat-value" id="triangleCount">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Process Time</div>
+                        <div class="stat-value" id="processTime">0s</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="viewport">
+            <div id="loading">
+                <div class="spinner"></div>
+                <div>Processing with Ball Pivoting...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+
+    <!-- Kinect Device -->
+    <script src="KinectDevice.js"></script>
+
+    <!-- Ball Pivoting Mesh Generator -->
+    <script src="ball-pivoting-mesh.js"></script>
+
+    <script>
+        // Three.js scene setup
+        let scene, camera, renderer, controls;
+        let kinectDevice;
+        let ballPivotingGenerator;
+        let currentPointCloud = [];
+        let lastMeshData = null;
+
+        // Initialize Three.js
+        function initThreeJS() {
+            const viewport = document.getElementById('viewport');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                75,
+                viewport.clientWidth / viewport.clientHeight,
+                0.1,
+                1000
+            );
+            camera.position.set(0, 1, 2);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+            renderer.shadowMap.enabled = true;
+            viewport.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Grid helper
+            const gridHelper = new THREE.GridHelper(10, 10);
+            scene.add(gridHelper);
+
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = viewport.clientWidth / viewport.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+            });
+
+            console.log('✅ Three.js initialized');
+        }
+
+        // Initialize Ball Pivoting Generator
+        function initBallPivoting() {
+            ballPivotingGenerator = new BallPivotingMeshGenerator('http://localhost:5000');
+            console.log('✅ Ball Pivoting Generator initialized');
+        }
+
+        // Check server health
+        async function checkServer() {
+            const statusDiv = document.getElementById('serverStatus');
+            statusDiv.className = 'status status-info';
+            statusDiv.textContent = 'Checking server...';
+
+            const isHealthy = await ballPivotingGenerator.checkServerHealth();
+
+            if (isHealthy) {
+                statusDiv.className = 'status status-success';
+                statusDiv.textContent = '✅ Server is running and healthy';
+            } else {
+                statusDiv.className = 'status status-error';
+                statusDiv.textContent = '❌ Server is not available. Please start the mesh server.';
+            }
+        }
+
+        // Toggle Kinect connection
+        function toggleConnection() {
+            const btn = document.getElementById('connectBtn');
+            const statusDiv = document.getElementById('connectionStatus');
+
+            if (!kinectDevice || !kinectDevice.connected) {
+                // Connect
+                const serverUrl = document.getElementById('serverUrl').value;
+                kinectDevice = new KinectDevice(serverUrl);
+
+                kinectDevice.on('connected', () => {
+                    statusDiv.className = 'status status-success';
+                    statusDiv.textContent = '✅ Connected to Kinect';
+                    btn.textContent = '🔌 Disconnect';
+                    document.getElementById('generateBtn').disabled = false;
+                });
+
+                kinectDevice.on('disconnected', () => {
+                    statusDiv.className = 'status status-info';
+                    statusDiv.textContent = 'Disconnected';
+                    btn.textContent = '📡 Connect to Kinect';
+                    document.getElementById('generateBtn').disabled = true;
+                });
+
+                kinectDevice.on('depthFrame', (data) => {
+                    // Store points for mesh generation
+                    currentPointCloud = data.points || [];
+                    document.getElementById('pointCount').textContent = currentPointCloud.length.toLocaleString();
+                });
+
+            } else {
+                // Disconnect
+                kinectDevice.disconnect();
+            }
+        }
+
+        // Generate mesh using Ball Pivoting
+        async function generateMesh() {
+            if (currentPointCloud.length === 0) {
+                alert('No point cloud data available. Please connect to Kinect first.');
+                return;
+            }
+
+            const loadingDiv = document.getElementById('loading');
+            const generateBtn = document.getElementById('generateBtn');
+
+            try {
+                loadingDiv.style.display = 'block';
+                generateBtn.disabled = true;
+
+                // Remove previous mesh
+                if (ballPivotingGenerator.lastMesh) {
+                    ballPivotingGenerator.removeLastMesh(scene);
+                }
+
+                // Generate and load mesh
+                const mesh = await ballPivotingGenerator.processAndLoadMesh(
+                    currentPointCloud,
+                    scene,
+                    {
+                        useJSON: true,
+                        vertexColors: true,
+                        wireframe: false
+                    }
+                );
+
+                // Get mesh data for download
+                lastMeshData = await ballPivotingGenerator.generateMeshFromPoints(
+                    currentPointCloud,
+                    true
+                );
+
+                // Update statistics
+                document.getElementById('vertexCount').textContent =
+                    lastMeshData.stats.numVertices.toLocaleString();
+                document.getElementById('triangleCount').textContent =
+                    lastMeshData.stats.numTriangles.toLocaleString();
+                document.getElementById('processTime').textContent =
+                    lastMeshData.stats.processingTime.toFixed(2) + 's';
+
+                console.log('✅ Mesh generation complete!');
+
+            } catch (error) {
+                alert('Error generating mesh: ' + error.message);
+                console.error(error);
+            } finally {
+                loadingDiv.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+
+        // Clear scene
+        function clearScene() {
+            if (ballPivotingGenerator && ballPivotingGenerator.lastMesh) {
+                ballPivotingGenerator.removeLastMesh(scene);
+                document.getElementById('vertexCount').textContent = '0';
+                document.getElementById('triangleCount').textContent = '0';
+                document.getElementById('processTime').textContent = '0s';
+            }
+        }
+
+        // Download mesh
+        function downloadMesh() {
+            if (lastMeshData) {
+                ballPivotingGenerator.downloadMesh(lastMeshData, 'kinect_ball_pivoting_mesh');
+            } else {
+                alert('No mesh to download. Please generate a mesh first.');
+            }
+        }
+
+        // Update settings
+        function updateRadiusMultiplier(value) {
+            document.getElementById('radiusMultiplierValue').textContent = parseFloat(value).toFixed(1);
+            ballPivotingGenerator.setConfig({ radiusMultiplier: parseFloat(value) });
+        }
+
+        function updateNumRadii(value) {
+            document.getElementById('numRadiiValue').textContent = value;
+            ballPivotingGenerator.setConfig({ numRadii: parseInt(value) });
+        }
+
+        function updateOutputFormat(value) {
+            ballPivotingGenerator.setConfig({ outputFormat: value });
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initThreeJS();
+            initBallPivoting();
+            checkServer();
+        });
+    </script>
+</body>
+</html>

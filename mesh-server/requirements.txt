@@ -1,0 +1,14 @@
+# Ball Pivoting Mesh Server - Python Dependencies
+
+# Web Framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# 3D Processing
+open3d==0.18.0
+
+# Scientific Computing
+numpy==1.24.3
+
+# Optional: For better performance
+# scikit-learn==1.3.0

@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Web Kinect - Example</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
     <script src="pointcloud-processor.js"></script>
     <script src="depth-to-mesh.js"></script>
+    <script src="ball-pivoting-mesh.js"></script>
     <style>
         * {
             margin: 0;
@@ -626,7 +630,18 @@
                             <button id="startPhase2Btn" onclick="startPhase2()" disabled style="display: none; width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #ff9800; color: white;">🔄 Mulai Fase 2 (Belakang)</button>
                             <button id="stopScanBtn" class="btn-warning" onclick="stopCapture()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #f39c12; color: white;">⏹️ Stop Record</button>
                             <button id="removeBgBtn" class="btn-primary" onclick="removeBackground()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">🎨 Remove BG</button>
-                            <button id="generateWatertightBtn" class="btn-primary" onclick="generateWatertight()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🔷 Generate Watertight</button>
+                            <!-- Mesh Generation Method Selection -->
+                            <div style="background: rgba(0,0,0,0.05); padding: 12px; border-radius: 6px; margin-bottom: 10px;">
+                                <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block;">Mesh Generation Method:</label>
+                                <select id="meshMethod" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
+                                    <option value="watertight">Watertight (Fast, Local)</option>
+                                    <option value="ballpivoting">Ball Pivoting (High Quality, Server)</option>
+                                </select>
+                                <small style="color: #666; font-size: 11px;">
+                                    <span id="meshMethodDesc">Fast processing, good quality</span>
+                                </small>
+                            </div>
+                            <button id="generateMeshBtn" class="btn-primary" onclick="generateMesh()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🔷 Generate Mesh</button>
                             <button id="exportSTLBtn" class="btn-primary" onclick="exportSTL()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">💾 Export STL</button>
                             <button id="clearBtn" class="btn-danger" onclick="clearScan()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #e74c3c; color: white;">🗑️ Clear All</button>
                         </div>
@@ -2334,7 +2349,7 @@
                 pointCloudBack.length.toLocaleString() + ')');
             document.getElementById('pointCount').textContent = pointCloud.length.toLocaleString();
             document.getElementById('removeBgBtn').disabled = false;
-            document.getElementById('generateWatertightBtn').disabled = false;
+            document.getElementById('generateMeshBtn').disabled = false;
             document.getElementById('exportSTLBtn').disabled = false;
             document.getElementById('currentPhase').textContent = 'Selesai - Objek 3D Utuh';
         }
@@ -2477,7 +2492,7 @@
             // Enable buttons if we have points
             if (pointCloud.length > 0) {
                 document.getElementById('removeBgBtn').disabled = false;
-                document.getElementById('generateWatertightBtn').disabled = false;
+                document.getElementById('generateMeshBtn').disabled = false;
                 document.getElementById('exportSTLBtn').disabled = false; // Enable export even without mesh
                 document.getElementById('clearBtn').disabled = false; // Enable clear button
                 console.log('✅ Scan completed. Total: ' + pointCloud.length.toLocaleString() + ' points from ' + frameCount + ' frames');
@@ -2534,7 +2549,7 @@
             // Enable generate mesh button if we have points
             if (pointCloud.length > 0) {
                 document.getElementById('removeBgBtn').disabled = false;
-                document.getElementById('generateWatertightBtn').disabled = false;
+                document.getElementById('generateMeshBtn').disabled = false;
                 console.log('✅ Scan completed with', pointCloud.length, 'points from', frameCount, 'frames');
             } else {
                 console.warn('⚠️ Scan completed but no points collected');
@@ -2744,7 +2759,7 @@
                 
                 // Enable generate mesh button
                 if (pointCloud.length > 0) {
-                    document.getElementById('generateWatertightBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').disabled = false;
                 }
                 
                 alert('✅ Background berhasil dihapus!\n\n' +
@@ -2972,8 +2987,8 @@
                 if (pointCloud.length > 0) {
                     document.getElementById('removeBgBtn').disabled = false;
                 }
-                document.getElementById('generateWatertightBtn').disabled = false;
-                document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                document.getElementById('generateMeshBtn').disabled = false;
+                document.getElementById('generateMeshBtn').textContent = '🔷 Generate Mesh';
                 document.getElementById('clearBtn').disabled = false;
                 updateScanStatus('ready', 'Error: Not enough points after filtering');
 
@@ -3083,16 +3098,16 @@
                 if (pointCloud.length > 0) {
                     document.getElementById('removeBgBtn').disabled = false;
                 }
-                document.getElementById('generateWatertightBtn').disabled = false;
-                document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                document.getElementById('generateMeshBtn').disabled = false;
+                document.getElementById('generateMeshBtn').textContent = '🔷 Generate Mesh';
                 updateScanStatus('ready', 'Error during transformation');
                 alert('Error saat transform mesh points!\n\n' + err.message + '\n\nSilakan coba scan ulang dengan lebih banyak points.');
                 return;
             }
 
             document.getElementById('removeBgBtn').disabled = true;
-            document.getElementById('generateWatertightBtn').disabled = true;
-            document.getElementById('generateWatertightBtn').textContent = 'Generating Watertight... (' + meshPoints.length.toLocaleString() + ' pts)';
+            document.getElementById('generateMeshBtn').disabled = true;
+            document.getElementById('generateMeshBtn').textContent = 'Generating Mesh... (' + meshPoints.length.toLocaleString() + ' pts)';
             updateScanStatus('processing', 'Generating watertight mesh from ' + meshPoints.length.toLocaleString() + ' points...');
 
             // Use Web Worker-like approach with chunked processing to prevent freeze
@@ -3195,8 +3210,8 @@
                                         if (pointCloud.length > 0) {
                                             document.getElementById('removeBgBtn').disabled = false;
                                         }
-                                        document.getElementById('generateWatertightBtn').disabled = false;
-                                        document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                                        document.getElementById('generateMeshBtn').disabled = false;
+                                        document.getElementById('generateMeshBtn').textContent = '🔷 Generate Mesh';
                                         document.getElementById('clearBtn').disabled = false; // Re-enable Clear All button
                                         
                                         // Restore capture state if it was active
@@ -3220,8 +3235,8 @@
                     if (pointCloud.length > 0) {
                         document.getElementById('removeBgBtn').disabled = false;
                     }
-                    document.getElementById('generateWatertightBtn').disabled = false;
-                    document.getElementById('generateWatertightBtn').textContent = '🔷 Generate Watertight';
+                    document.getElementById('generateMeshBtn').disabled = false;
+                    document.getElementById('generateMeshBtn').textContent = '🔷 Generate Mesh';
                     document.getElementById('clearBtn').disabled = false; // Re-enable Clear All button
                     updateScanStatus('ready', 'Error generating watertight mesh');
                 }
@@ -5220,7 +5235,7 @@
             
             document.getElementById('generateMeshBtn').disabled = true;
             document.getElementById('removeBgBtn').disabled = true;
-            document.getElementById('generateWatertightBtn').disabled = true;
+            document.getElementById('generateMeshBtn').disabled = true;
             document.getElementById('exportSTLBtn').disabled = true;
             document.getElementById('clearBtn').disabled = true; // Disable Clear All after clearing
             updateScanStatus('idle', 'Tidak aktif');
@@ -6280,6 +6295,202 @@
         window.addEventListener('beforeunload', function() {
             disconnect();
         });
+
+        // ========================================
+        // Ball Pivoting Integration
+        // ========================================
+
+        // Initialize Ball Pivoting Generator
+        let ballPivotingGenerator = null;
+
+        // Initialize on page load
+        window.addEventListener('load', function() {
+            // Initialize Ball Pivoting
+            ballPivotingGenerator = new BallPivotingMeshGenerator('http://localhost:5000');
+
+            // Check server health silently in background
+            ballPivotingGenerator.checkServerHealth().then(isHealthy => {
+                if (!isHealthy) {
+                    console.warn('⚠️ Ball Pivoting server is not running. Please start mesh-server to use Ball Pivoting method.');
+                }
+            });
+
+            // Mesh method change handler
+            const meshMethodSelect = document.getElementById('meshMethod');
+            if (meshMethodSelect) {
+                meshMethodSelect.addEventListener('change', function() {
+                    updateMeshMethodDescription();
+                });
+            }
+        });
+
+        // Update description based on selected mesh method
+        function updateMeshMethodDescription() {
+            const method = document.getElementById('meshMethod').value;
+            const descSpan = document.getElementById('meshMethodDesc');
+
+            if (method === 'watertight') {
+                descSpan.textContent = 'Fast processing, good quality, works offline';
+                descSpan.style.color = '#2ecc71';
+            } else if (method === 'ballpivoting') {
+                descSpan.textContent = 'High quality mesh, requires Python server';
+                descSpan.style.color = '#667eea';
+            }
+        }
+
+        // Main mesh generation dispatcher
+        async function generateMesh() {
+            const method = document.getElementById('meshMethod').value;
+
+            if (method === 'watertight') {
+                generateWatertight();
+            } else if (method === 'ballpivoting') {
+                await generateBallPivoting();
+            }
+        }
+
+        // Generate mesh using Ball Pivoting Algorithm
+        async function generateBallPivoting() {
+            if (pointCloud.length === 0) {
+                alert('Tidak ada point cloud untuk di-generate mesh! Silakan lakukan scanning terlebih dahulu.');
+                return;
+            }
+
+            if (pointCloud.length < 100) {
+                alert('Point cloud terlalu sedikit untuk Ball Pivoting! Minimal 100 points diperlukan.');
+                return;
+            }
+
+            console.log('🔷 Generating Ball Pivoting mesh from', pointCloud.length.toLocaleString(), 'points...');
+
+            // Check server health first
+            const isHealthy = await ballPivotingGenerator.checkServerHealth();
+            if (!isHealthy) {
+                const startServer = confirm(
+                    'Ball Pivoting server is not running!\n\n' +
+                    'You need to start the Python server first:\n' +
+                    '1. Open mesh-server folder\n' +
+                    '2. Run setup.bat (first time only)\n' +
+                    '3. Run start-server.bat\n\n' +
+                    'Click OK to use Watertight method instead, or Cancel to abort.'
+                );
+
+                if (startServer) {
+                    document.getElementById('meshMethod').value = 'watertight';
+                    updateMeshMethodDescription();
+                    generateWatertight();
+                }
+                return;
+            }
+
+            // Stop data capture
+            const wasCaptureActive = isCaptureActive;
+            isCaptureActive = false;
+
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send("Color");
+                console.log('📤 Switched to Color mode during Ball Pivoting');
+            }
+
+            // Downsample if too many points (for performance)
+            let meshPoints = pointCloud;
+            const maxPoints = 150000; // Ball Pivoting can handle more points
+
+            if (pointCloud.length > maxPoints) {
+                console.log('⚠️ Downsampling from', pointCloud.length.toLocaleString(), 'to', maxPoints.toLocaleString(), 'points');
+
+                const voxelSize = 0.008; // 8mm voxels
+                const voxelMap = new Map();
+
+                for (const p of pointCloud) {
+                    const key = `${Math.floor(p.x/voxelSize)},${Math.floor(p.y/voxelSize)},${Math.floor(p.z/voxelSize)}`;
+                    if (!voxelMap.has(key)) {
+                        voxelMap.set(key, p);
+                    }
+                }
+
+                meshPoints = Array.from(voxelMap.values());
+                console.log('✅ Downsampled to', meshPoints.length.toLocaleString(), 'points');
+            }
+
+            // Update UI
+            updateScanStatus('processing', 'Sending to Ball Pivoting server (' + meshPoints.length.toLocaleString() + ' points)...');
+            document.getElementById('generateMeshBtn').disabled = true;
+
+            try {
+                // Configure Ball Pivoting parameters
+                ballPivotingGenerator.setConfig({
+                    radiusMultiplier: 1.5, // Adjust for your needs
+                    numRadii: 2,
+                    outputFormat: 'ply'
+                });
+
+                // Remove previous mesh if exists
+                if (ballPivotingGenerator.lastMesh) {
+                    scene.remove(ballPivotingGenerator.lastMesh);
+                    ballPivotingGenerator.lastMesh.geometry.dispose();
+                    ballPivotingGenerator.lastMesh.material.dispose();
+                }
+
+                // Generate mesh
+                console.log('📤 Sending point cloud to server...');
+                updateScanStatus('processing', 'Ball Pivoting processing... (may take 10-30 seconds)');
+
+                const mesh = await ballPivotingGenerator.processAndLoadMesh(
+                    meshPoints,
+                    scene,
+                    {
+                        useJSON: true,
+                        vertexColors: true,
+                        wireframe: false,
+                        metalness: 0.3,
+                        roughness: 0.7
+                    }
+                );
+
+                console.log('✅ Ball Pivoting mesh loaded successfully!');
+
+                // Update UI
+                updateScanStatus('ready', 'Ball Pivoting mesh generated successfully!');
+                alert('✅ Ball Pivoting mesh generated successfully!\n\nMesh is now displayed in 3D view.');
+
+                // Enable export
+                document.getElementById('exportSTLBtn').disabled = false;
+
+                // Store mesh for export
+                currentGeometry = mesh.geometry;
+
+            } catch (error) {
+                console.error('❌ Ball Pivoting failed:', error);
+                updateScanStatus('ready', 'Ball Pivoting failed');
+
+                const retry = confirm(
+                    'Ball Pivoting mesh generation failed!\n\n' +
+                    'Error: ' + error.message + '\n\n' +
+                    'Possible causes:\n' +
+                    '- Server not responding\n' +
+                    '- Not enough points\n' +
+                    '- Point cloud too sparse\n\n' +
+                    'Try using Watertight method instead?'
+                );
+
+                if (retry) {
+                    document.getElementById('meshMethod').value = 'watertight';
+                    updateMeshMethodDescription();
+                    generateWatertight();
+                }
+            } finally {
+                document.getElementById('generateMeshBtn').disabled = false;
+
+                // Resume capture if it was active
+                if (wasCaptureActive) {
+                    isCaptureActive = true;
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(currentMode === 'pointCloud' ? 'PointCloud' : 'PointCloudRGB');
+                    }
+                }
+            }
+        }
     </script>
 </body>
 </html>

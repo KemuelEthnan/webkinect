@@ -86,3 +86,6 @@ Berikut revisinya: 1. Disini saya ingin agar objek yang selesai di scan dan dila
   jauh dari kamera, atau objek terlalu dekat dari kamera kinnect 
 
 Bisakah anda memperbaiki pada index.html, yaitu pada bagian ekspor stl. Disini ketika saya sudah selesai scan dan klik ekspor stl, hasilnya sangat beda dari objek 3d kanvas 3js yang ada di web dengan yang saya buka hasil file download ekspor. 
+
+https://chatgpt.com/share/693aa268-b7e0-8006-a0b4-fdab5201d854
+https://www.open3d.org/docs/latest/tutorial/Advanced/surface_reconstruction.html#:~:text=

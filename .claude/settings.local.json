@@ -7,7 +7,12 @@
       "Bash(\"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe\" KinectServer.csproj /property:Configuration=Debug /target:Rebuild /verbosity:minimal)",
       "Bash(python3:*)",
       "Bash(cat:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(pip uninstall:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(timeout 5 python:*)"
     ],
     "deny": [],
     "ask": []
