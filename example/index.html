@@ -630,17 +630,6 @@
                             <button id="startPhase2Btn" onclick="startPhase2()" disabled style="display: none; width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #ff9800; color: white;">🔄 Mulai Fase 2 (Belakang)</button>
                             <button id="stopScanBtn" class="btn-warning" onclick="stopCapture()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #f39c12; color: white;">⏹️ Stop Record</button>
                             <button id="removeBgBtn" class="btn-primary" onclick="removeBackground()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">🎨 Remove BG</button>
-                            <!-- Mesh Generation Method Selection -->
-                            <div style="background: rgba(0,0,0,0.05); padding: 12px; border-radius: 6px; margin-bottom: 10px;">
-                                <label style="font-size: 13px; font-weight: 600; margin-bottom: 8px; display: block;">Mesh Generation Method:</label>
-                                <select id="meshMethod" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 8px;">
-                                    <option value="watertight">Watertight (Fast, Local)</option>
-                                    <option value="ballpivoting">Ball Pivoting (High Quality, Server)</option>
-                                </select>
-                                <small style="color: #666; font-size: 11px;">
-                                    <span id="meshMethodDesc">Fast processing, good quality</span>
-                                </small>
-                            </div>
                             <button id="generateMeshBtn" class="btn-primary" onclick="generateMesh()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🔷 Generate Mesh</button>
                             <button id="exportSTLBtn" class="btn-primary" onclick="exportSTL()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">💾 Export STL</button>
                             <button id="clearBtn" class="btn-danger" onclick="clearScan()" disabled style="width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: #e74c3c; color: white;">🗑️ Clear All</button>
@@ -3150,11 +3139,12 @@
                                         console.log('✅ Watertight mesh generation completed in ' + elapsedTime + ' seconds');
 
                                         const oldMesh = scene.getObjectByName('mesh');
-                                        if (oldMesh) {
-                                            scene.remove(oldMesh);
-                                        }
+                if (oldMesh) scene.remove(oldMesh);
 
-                                        // Also hide point cloud when showing mesh
+                const oldDepthMesh = scene.getObjectByName('depthMesh');
+                if (oldDepthMesh) scene.remove(oldDepthMesh);
+
+                // Create new mesh material
                                         const oldPointCloud = scene.getObjectByName('pointCloud');
                                         if (oldPointCloud) {
                                             oldPointCloud.visible = false;
@@ -6338,15 +6328,17 @@
             }
         }
 
-        // Main mesh generation dispatcher
         async function generateMesh() {
-            const method = document.getElementById('meshMethod').value;
-
-            if (method === 'watertight') {
-                generateWatertight();
-            } else if (method === 'ballpivoting') {
-                await generateBallPivoting();
+            if (pointCloud.length === 0) {
+                alert('Tidak ada point cloud untuk di-generate!');
+                return;
             }
+            
+            console.log('🔷 Starting mesh generation (Watertight)...');
+            updateScanStatus('processing', 'Generating watertight mesh...');
+
+            // Generate watertight mesh (the default method)
+            generateWatertightMesh();
         }
 
         // Generate mesh using Ball Pivoting Algorithm

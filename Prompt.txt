@@ -89,3 +89,5 @@ Bisakah anda memperbaiki pada index.html, yaitu pada bagian ekspor stl. Disini k
 
 https://chatgpt.com/share/693aa268-b7e0-8006-a0b4-fdab5201d854
 https://www.open3d.org/docs/latest/tutorial/Advanced/surface_reconstruction.html#:~:text=
+
+Disini saya ingin membuat sistem dimana menggantikan sistem mesh dengan ball pivoting yang sudah ada sekarang. Mesh yang sekarang Ball_Pivoting masih sangat buruk dimana yang seharusnya dari hasil scan 3d objek berbentuk pointclod dari open3d.org bisa membentuk file seperti gambar Screenshot 2025-12-11 182018.png tetapi disini yang tercetak masih sangat buruk seperti ini Screenshot 2025-12-11 183443.png dan juga objek yang tercetak tidak menggantikan model 3d hasil scan melainkan berada di bagian belakang 3d objek yang di scan sebelumnya, lihat source ini : https://www.open3d.org/docs/latest/tutorial/Advanced/surface_reconstruction.html#:~:text=. Bisakah anda menerapkannya ke index.html sistem ini? lihatlah workflow ini Workflow Ball Pivoting.txt
