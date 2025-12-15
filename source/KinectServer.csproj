@@ -56,12 +56,18 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="MathNet.Numerics, Version=5.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>packages\MathNet.Numerics.5.0.0\lib\net48\MathNet.Numerics.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ColorSerializer.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="FrameSerializer.cs" />
+    <Compile Include="FusionEngine.cs" />
     <Compile Include="JsonSerializer.cs" />
     <Compile Include="Mode.cs" />
     <Compile Include="Program.cs" />

@@ -91,3 +91,12 @@ https://chatgpt.com/share/693aa268-b7e0-8006-a0b4-fdab5201d854
 https://www.open3d.org/docs/latest/tutorial/Advanced/surface_reconstruction.html#:~:text=
 
 Disini saya ingin membuat sistem dimana menggantikan sistem mesh dengan ball pivoting yang sudah ada sekarang. Mesh yang sekarang Ball_Pivoting masih sangat buruk dimana yang seharusnya dari hasil scan 3d objek berbentuk pointclod dari open3d.org bisa membentuk file seperti gambar Screenshot 2025-12-11 182018.png tetapi disini yang tercetak masih sangat buruk seperti ini Screenshot 2025-12-11 183443.png dan juga objek yang tercetak tidak menggantikan model 3d hasil scan melainkan berada di bagian belakang 3d objek yang di scan sebelumnya, lihat source ini : https://www.open3d.org/docs/latest/tutorial/Advanced/surface_reconstruction.html#:~:text=. Bisakah anda menerapkannya ke index.html sistem ini? lihatlah workflow ini Workflow Ball Pivoting.txt
+
+Disini saya ingin menerapkan mekanisme baru pada sistem 3d scan kode index.html. Disini pada index.html masih mengalami         │
+│   masalah yang tidak terselesaikan pada sistem 3d scan yang hasilnya selalu pecah pecah, tidak beraturan dan saat scan bergerak   │
+│   hasil scan menjadi hancur. Nah disini saya menemukan open source github bernama dynamic fusion:                                 │
+│   https://github.com/mihaibujanca/dynamicfusion yang disini mereka bisa melakukan 3d scan dengan baik, berputar 360 derajat, dan  │
+│   tidak pecah. Hasil 3d scan nya pun utuh tidak pecah @Screenshot (858).png. Nah saya ingin meniru mekanisme nya ke kode          │
+│   index.html, yang dimana bisa melakukan scan seperti dynamic fusion dan hasil scan berada diatas kanvas 3js. Tolong terapkan     │
+│   sistem baru nya dengan anda membaca petunjuk dari Workflow Baru.txt dan cukup ubah sistem 3d scan nya saja jangan sistem        │
+│   lainnya di kode index.html     
