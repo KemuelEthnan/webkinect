@@ -11,7 +11,6 @@
     <script src="pointcloud-processor.js"></script>
     <script src="depth-to-mesh.js"></script>
     <script src="ball-pivoting-mesh.js"></script>
-    <script src="NewKinectFusion.js"></script>
     <style>
         * {
             margin: 0;
@@ -241,6 +240,10 @@
         #scanningTab {
             flex: 1;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
         }
 
         .scanning-container {
@@ -249,42 +252,71 @@
             grid-template-rows: 1fr;
             min-height: 0;
             height: 100%;
-            min-height: 0;
             gap: 0;
-            background: #2c3e50;
+            background: #000000;
+            flex: 1;
+            overflow: hidden;
         }
 
-        /* Left Panel - Depth Camera */
-        .depth-panel {
-            background: #34495e;
+        /* Left Panel - Controls (Skanect Style) */
+        .control-panel {
+            background: #000000;
             display: flex;
             flex-direction: column;
-            border-right: 1px solid #2c3e50;
+            border-right: 1px solid #000000;
             overflow-y: auto;
-        }
-
-        .panel-header {
-            padding: 15px;
-            background: #2c3e50;
-            font-weight: 600;
-            color: #ecf0f1;
-            border-bottom: 2px solid #667eea;
-        }
-
-        .depth-viewer {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             padding: 20px;
         }
 
-        #depthCanvas {
-            width: 280px;
-            height: 210px;
-            border: 2px solid #667eea;
+        /* Recording Controls - Skanect Style */
+        .recording-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .record-button {
+            width: 120px;
+            height: 120px;
             border-radius: 8px;
-            background: #1a1a1a;
+            border: none;
+            background: #000000;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.3s;
+            border: 2px solid #000000;
+        }
+
+        .record-button:hover {
+            background: #2a2a2a;
+        }
+
+        .record-button.recording {
+            background: #e74c3c;
+            border-color: #c0392b;
+            animation: pulse-record 1s infinite;
+        }
+
+        .record-button.recording::before {
+            content: '';
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .record-button:not(.recording)::before {
+            content: '';
+            width: 0;
+            height: 0;
+            border-left: 20px solid #e74c3c;
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            margin-left: 5px;
         }
 
         @keyframes pulse-record {
@@ -294,7 +326,15 @@
 
         .control-button-group {
             display: flex;
-            gap: 15px;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-button {
+            padding: 10px 15px;
+            background: #000000;
+            border: 1px solid #1a1a1a;
+            border-left: 3px solid #000000;
             color: #ecf0f1;
             border-radius: 4px;
             cursor: pointer;
@@ -303,10 +343,9 @@
             transition: all 0.2s;
         }
 
-        .legend-color {
-            width: 20px;
-            height: 12px;
-            border-radius: 2px;
+        .control-button:hover {
+            background: #000000;
+            border-left-color: #000000;
         }
 
         .control-button.delete {
@@ -329,7 +368,12 @@
         #viewer {
             width: 100%;
             height: 100%;
-            background: #1a1a1a;
+            min-height: 500px;
+            background: #000000;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
             border-radius: 0;
             overflow: hidden;
             margin-bottom: 0;
@@ -355,13 +399,106 @@
             font-size: 13px;
         }
 
-        /* Right Panel - Controls */
-        .control-panel {
-            background: #34495e;
+        /* Right Panel - Preview Panels (Skanect Style) */
+        .preview-panel {
+            background: #000000;
             display: flex;
             flex-direction: column;
             border-left: 1px solid #000000;
             overflow-y: auto;
+            padding: 15px;
+            gap: 15px;
+        }
+
+        .preview-panel-top {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .preview-box {
+            background: #000000;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #1a1a1a;
+        }
+
+        .preview-box-large {
+            background: #000000;
+            border-radius: 8px;
+            padding: 15px;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #1a1a1a;
+        }
+
+        .preview-box-header {
+            font-size: 11px;
+            color: #95a5a6;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .depth-viewer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #depthCanvas {
+            width: 100%;
+            max-width: 280px;
+            height: auto;
+            aspect-ratio: 4/3;
+            border: 1px solid #1a1a1a;
+            border-radius: 6px;
+            background: #000000;
+        }
+
+        .depth-legend {
+            margin-top: 10px;
+            font-size: 10px;
+            display: flex;
+            gap: 10px;
+            color: #95a5a6;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 10px;
+            border-radius: 2px;
+        }
+
+        .depth-stats {
+            margin-top: 10px;
+            font-size: 11px;
+            text-align: center;
+            color: #95a5a6;
+        }
+
+        .panel-header {
+            padding: 12px;
+            background: #000000;
+            font-weight: 600;
+            color: #ecf0f1;
+            border-bottom: 1px solid #34495e;
+            font-size: 12px;
+            text-transform: uppercase;
         }
 
         .control-section {
@@ -548,6 +685,24 @@
             .content-grid {
                 grid-template-columns: 1fr;
             }
+        }
+
+        /* Watermark */
+        .watermark {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ecf0f1;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            z-index: 9999;
+            pointer-events: none;
+            user-select: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
         }
     </style>
 </head>
@@ -835,14 +990,73 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Center Panel: 3D Viewer -->
+                    <div class="viewer-panel">
+                        <div id="viewer"></div>
+                        <div class="viewer-overlay">
+                            <div class="title">3D Mesh Viewer</div>
+                            <div style="font-size: 11px; line-height: 1.6; color: #95a5a6;">
+                                🖱️ Drag to rotate<br>
+                                📜 Scroll to zoom<br>
+                                <span id="meshInfo" style="color: #ecf0f1;">No mesh loaded</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Preview Panels (Skanect Style) -->
+                    <div class="preview-panel">
+                        <div class="preview-panel-top">
+                            <!-- Depth Camera Preview -->
+                            <div class="preview-box">
+                                <div class="preview-box-header">Depth Camera</div>
+                                <div class="depth-viewer">
+                                    <canvas id="depthCanvas" width="320" height="240"></canvas>
+                                    <div class="depth-legend">
+                                        <div class="legend-item">
+                                            <div class="legend-color" style="background: #00ff00;"></div>
+                                            <span>Valid</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-color" style="background: #ff0000;"></div>
+                                            <span>Invalid</span>
+                                        </div>
+                                    </div>
+                                    <div class="depth-stats">
+                                        <div>FPS: <span id="depthFps">0</span></div>
+                                        <div>Points: <span id="depthPoints">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Color Camera Preview -->
+                            <div class="preview-box">
+                                <div class="preview-box-header">Color Camera</div>
+                                <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000000; border-radius: 6px; overflow: hidden;">
+                                    <img id="colorPreviewImage" style="max-width: 100%; max-height: 100%; display: none;" alt="Color Preview">
+                                    <div style="color: #95a5a6; font-size: 11px;" id="colorPreviewPlaceholder">No feed</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Large Preview Panel -->
+                        <div class="preview-box-large">
+                            <div class="preview-box-header">3D Preview</div>
+                            <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000000; border-radius: 6px; color: #95a5a6; font-size: 12px;">
+                                <div id="preview3DPlaceholder">Mesh preview will appear here</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Watermark -->
+    <div class="watermark">COPYRIGHT BY FAHRI</div>
+
     <script>
         var socket = null;
-        var colorSocket = null; // dedicated socket for color preview in scanning tab
         var connected = false;
         var currentMode = 'scanning'; // 'normal' or 'scanning'
 
@@ -863,12 +1077,6 @@
         var maxTotalPoints = 2000000; // Limit to 2M points for ultra high-quality scans
         var autoCaptureTimer = null;
         var manualRecordMode = false; // Auto-stop mode yang lebih reliable
-
-        // New Dynamic Fusion variables
-        let kinectFusion;
-        let currentYAngle = 0;
-        const rotationSpeed = 0.02; // Radians per frame, increased for visible rotation
-        
         
         // Multi-phase scanning (depan dan belakang)
         var scanPhase = 0; // 0 = not started, 1 = depan (front), 2 = belakang (back)
@@ -1035,9 +1243,6 @@
                     socket.send("Color");
                     console.log('📤 Sent Color mode on connect');
                 }
-
-                // Mulai socket kedua khusus Color Preview di tab scanning
-                startColorPreviewSocket();
             };
 
             socket.onclose = function() {
@@ -1119,22 +1324,41 @@
                                 visualizeDepth(depthData);
                             }
 
-                            // 🔥 New Dynamic Fusion Implementation
-                            if (currentMode === 'scanning' && isCaptureActive && kinectFusion) {
-                                if (pointCloudPayload.points.length > 0) {
-                                    console.log('Fusing frame', frameCount, 'with angle:', currentYAngle.toFixed(3));
-                                    kinectFusion.addFrame(pointCloudPayload.points, currentYAngle);
-                                    currentYAngle += rotationSpeed; // Increment angle for next frame
-
-                                    // Update stats
-                                    frameCount++;
-                                    document.getElementById('frameCount').textContent = frameCount;
-                                    document.getElementById('pointCount').textContent = kinectFusion.totalPoints.toLocaleString();
+                            // 🔥 RADICAL SIMPLIFICATION: If we're in scanning tab, ALWAYS process point cloud data
+                            // This bypasses all the complex isScanning flag logic that keeps failing
+                            if (currentMode === 'scanning') {
+                                // Check if we should still capture (auto-stop after limit or duration)
+                                if (!isCaptureActive) {
+                                    console.log('⏸️ Capture stopped - ignoring new data');
+                                    return;
                                 }
+
+                                // Check if we've hit the point limit
+                                if (pointCloud.length >= maxTotalPoints) {
+                                    console.log('⏸️ Max points reached (' + maxTotalPoints.toLocaleString() + ') - stopping capture');
+                                    stopCapture();
+                                    return;
+                                }
+
+                                console.log('🔄 AUTO-PROCESSING depth frame data (mesh mode)...');
+                                console.log('📊 Received ' + pointCloudPayload.points.length + ' points');
+
+                                // Process as mesh directly (seperti Skanect) - bukan point cloud
+                                if (typeof DepthToMeshConverter !== 'undefined' && depthMeshConverter) {
+                                    processDepthFrameAsMesh(pointCloudPayload, data.width, data.height);
+                                } else {
+                                    // Fallback to point cloud if converter not available
+                                    processPointCloud(pointCloudPayload);
+                                }
+
+                                // Update scan info
+                                const pointCountEl = document.getElementById('pointCount');
+                                const frameCountEl = document.getElementById('frameCount');
+                                if (pointCountEl) pointCountEl.textContent = pointCloud.length.toLocaleString();
+                                if (frameCountEl) frameCountEl.textContent = frameCount;
                             } else {
-                                if (currentMode !== 'scanning') console.log('⚠️ Point cloud data received but not in scanning tab');
-                                if (!isCaptureActive) console.log('⏸️ Capture stopped - ignoring new data');
-                                if (!kinectFusion) console.log('⚠️ kinectFusion not initialized');
+                                console.log('⚠️ Point cloud data received but not in scanning tab');
+                                if (debugMsgEl) debugMsgEl.textContent = 'Data received but not in scanning tab';
                             }
                         } 
                         // Check if it's skeleton data (server sends: {skeletons: [...]})
@@ -1194,47 +1418,29 @@
                         if (debugMsgEl) debugMsgEl.textContent = 'Error parsing data: ' + e.message;
                     }
                 }
-                // Camera feed (Blob) - always update color preview, and normal tab when active
-                else if (event.data instanceof Blob) {
+                // Camera feed (Blob) - process in normal mode for both Color and Depth
+                else if (event.data instanceof Blob && currentMode === 'normal') {
                     var url = URL.createObjectURL(event.data);
-
-                    // Update color preview (scanning panel)
-                    var colorPreviewImg = document.getElementById('colorPreviewImage');
-                    var colorPreviewPlaceholder = document.getElementById('colorPreviewPlaceholder');
-                    if (colorPreviewImg) {
-                        colorPreviewImg.src = url;
-                        colorPreviewImg.style.display = 'block';
-                        if (colorPreviewPlaceholder) colorPreviewPlaceholder.style.display = 'none';
-
-                        if (colorPreviewImg.dataset.oldUrl) {
-                            URL.revokeObjectURL(colorPreviewImg.dataset.oldUrl);
-                        }
-                        colorPreviewImg.dataset.oldUrl = url;
+                    var img = document.getElementById('cameraImage');
+                    img.src = url;
+                    img.style.display = 'block';
+                    document.getElementById('placeholder').style.display = 'none';
+                    
+                    // Revoke old URL to prevent memory leaks
+                    if (img.dataset.oldUrl) {
+                        URL.revokeObjectURL(img.dataset.oldUrl);
                     }
-
-                    // Update main camera image in Normal tab when active
-                    if (currentMode === 'normal') {
-                        var img = document.getElementById('cameraImage');
-                        img.src = url;
-                        img.style.display = 'block';
-                        document.getElementById('placeholder').style.display = 'none';
-                        
-                        // Revoke old URL to prevent memory leaks
-                        if (img.dataset.oldUrl) {
-                            URL.revokeObjectURL(img.dataset.oldUrl);
-                        }
-                        img.dataset.oldUrl = url;
-                        
-                        // Update status text based on current mode
-                        const statusText = document.getElementById('statusText');
-                        if (statusText) {
-                            // Check if we're in depth mode by checking button state
-                            const depthBtn = document.getElementById('depthBtn');
-                            if (depthBtn && depthBtn.classList.contains('active')) {
-                                statusText.textContent = 'Terhubung ke server - Depth Mode';
-                            } else {
-                                statusText.textContent = 'Terhubung ke server - Color Mode';
-                            }
+                    img.dataset.oldUrl = url;
+                    
+                    // Update status text based on current mode
+                    const statusText = document.getElementById('statusText');
+                    if (statusText) {
+                        // Check if we're in depth mode by checking button state
+                        const depthBtn = document.getElementById('depthBtn');
+                        if (depthBtn && depthBtn.classList.contains('active')) {
+                            statusText.textContent = 'Terhubung ke server - Depth Mode';
+                        } else {
+                            statusText.textContent = 'Terhubung ke server - Color Mode';
                         }
                     }
                 }
@@ -1246,51 +1452,7 @@
                 socket.close();
                 socket = null;
             }
-            if (colorSocket) {
-                colorSocket.close();
-                colorSocket = null;
-            }
             updateStatus(false);
-        }
-
-        // Dedicated socket hanya untuk stream Color agar panel Color Camera hidup di tab scanning
-        function startColorPreviewSocket() {
-            if (colorSocket && (colorSocket.readyState === WebSocket.OPEN || colorSocket.readyState === WebSocket.CONNECTING)) {
-                return;
-            }
-
-            colorSocket = new WebSocket("ws://127.0.0.1:8181");
-
-            colorSocket.onopen = function() {
-                console.log('Color preview socket connected');
-                colorSocket.send("Color");
-            };
-
-            colorSocket.onmessage = function(event) {
-                if (event.data instanceof Blob) {
-                    var url = URL.createObjectURL(event.data);
-                    var colorPreviewImg = document.getElementById('colorPreviewImage');
-                    var colorPreviewPlaceholder = document.getElementById('colorPreviewPlaceholder');
-                    if (colorPreviewImg) {
-                        colorPreviewImg.src = url;
-                        colorPreviewImg.style.display = 'block';
-                        if (colorPreviewPlaceholder) colorPreviewPlaceholder.style.display = 'none';
-
-                        if (colorPreviewImg.dataset.oldUrl) {
-                            URL.revokeObjectURL(colorPreviewImg.dataset.oldUrl);
-                        }
-                        colorPreviewImg.dataset.oldUrl = url;
-                    }
-                }
-            };
-
-            colorSocket.onclose = function() {
-                console.log('Color preview socket closed');
-            };
-
-            colorSocket.onerror = function(err) {
-                console.warn('Color preview socket error:', err);
-            };
         }
 
         function setColorMode() {
@@ -1345,7 +1507,6 @@
             console.warn('⚠️ DepthToMeshConverter not loaded - mesh generation will use point cloud');
         }
         
-        let controls; // Declare controls globally or at a scope accessible by animate
         function initViewer() {
             const container = document.getElementById('viewer');
             if (!container) return;
@@ -1354,43 +1515,127 @@
             scene.background = new THREE.Color(0x1a1a1a);
             
             camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
-            camera.position.set(0, 0.5, 2);
+            camera.position.set(0, 0, 3);
             
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(container.clientWidth, container.clientHeight);
             container.appendChild(renderer.domElement);
-
-            // Use OrbitControls
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 0.5, 0);
-            controls.update();
             
-            // Add lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            // Add lights (increased intensity for better visibility)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
             
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
             directionalLight.position.set(5, 5, 5);
             scene.add(directionalLight);
             
-            // Add grid
-            const gridHelper = new THREE.GridHelper(4, 20); // 4x4 meters grid with 20 divisions
+            // Add additional light from opposite side for better illumination
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight2.position.set(-5, 3, -5);
+            scene.add(directionalLight2);
+            
+            // Ukuran kanvas 3js: 400mm x 400mm (0.4m x 0.4m)
+            const canvasSize = 0.4; // 400mm = 0.4m
+            const maxObjectSize = 0.35; // 350mm = 0.35m (maksimal ukuran objek)
+            
+            // Add grid sesuai ukuran kanvas
+            // Grid diposisikan di Y = 0 (di atas ground plane)
+            const gridHelper = new THREE.GridHelper(canvasSize, 8); // Grid 400mm dengan 8 divisi
+            gridHelper.position.y = 0; // Pastikan grid berada di Y = 0
             scene.add(gridHelper);
             
             // Add axes
-            const axesHelper = new THREE.AxesHelper(0.5);
+            const axesHelper = new THREE.AxesHelper(0.5); // Axes standar
             scene.add(axesHelper);
             
-            // Initialize the new fusion system
-            kinectFusion = new NewKinectFusion(scene);
+            // Add cube in the center
+            const cubeSize = 0.2; // 20cm x 20cm x 20cm cube (larger for better visibility)
+            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            const cubeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0xffffff, // White color
+                metalness: 0.1,
+                roughness: 0.9
+            });
+            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+            cube.position.set(0, cubeSize / 2, 0); // Position at center, with bottom on grid
+            scene.add(cube);
+            
+            // Add wireframe edges for better visibility
+            const edges = new THREE.EdgesGeometry(cubeGeometry);
+            const line = new THREE.LineSegments(
+                edges,
+                new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
+            );
+            line.position.copy(cube.position);
+            scene.add(line);
+            
+            // Store cube reference globally for potential rotation animation
+            window.centerCube = cube;
+            window.centerCubeWireframe = line;
+            
+            // Ensure camera looks at the cube
+            camera.lookAt(0, 0, 0);
+            
+            // Hanya grid layout saja, tanpa kotak wireframe
+            console.log('✅ Grid layout created:', {
+                canvasSize: canvasSize + 'm x ' + canvasSize + 'm (400mm x 400mm)',
+                maxObjectSize: maxObjectSize + 'm (350mm)',
+                divisions: 8
+            });
+            console.log('✅ White cube added at center:', cube.position, 'Size:', cubeSize);
+            
+            // Store canvas size globally untuk validasi objek
+            window.canvasSize = canvasSize;
+            window.maxObjectSize = maxObjectSize;
+            
+            // Simple orbit controls
+            let isDragging = false;
+            let previousMousePosition = { x: 0, y: 0 };
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                isDragging = true;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaX = e.clientX - previousMousePosition.x;
+                    const deltaY = e.clientY - previousMousePosition.y;
+                    
+                    camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
+                    camera.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), deltaY * 0.01);
+                    camera.lookAt(0, 0, 0);
+                }
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            renderer.domElement.addEventListener('wheel', (e) => {
+                const delta = e.deltaY * 0.001;
+                camera.position.multiplyScalar(1 + delta);
+            });
             
             animate();
         }
         
         function animate() {
-            if (renderer && scene && camera && controls) { // Ensure controls are defined
+            if (renderer && scene && camera) {
                 requestAnimationFrame(animate);
-                controls.update(); // Required for OrbitControls
+                
+                // Rotate center cube if it exists
+                if (window.centerCube) {
+                    window.centerCube.rotation.x += 0.01;
+                    window.centerCube.rotation.y += 0.01;
+                }
+                
+                // Rotate wireframe with cube
+                if (window.centerCubeWireframe) {
+                    window.centerCubeWireframe.rotation.x += 0.01;
+                    window.centerCubeWireframe.rotation.y += 0.01;
+                }
+                
                 renderer.render(scene, camera);
             }
         }
@@ -1542,6 +1787,35 @@
                 statusEl.textContent = statusText;
             }
         }
+
+        // Update workflow step highlighting (Skanect style)
+        function updateWorkflowStep(step) {
+            const steps = document.querySelectorAll('.workflow-step');
+            steps.forEach(s => s.classList.remove('active'));
+            
+            const stepMap = {
+                'prepare': 0,
+                'record': 1,
+                'reconstruct': 2,
+                'process': 3,
+                'share': 4
+            };
+            
+            if (stepMap[step] !== undefined) {
+                steps[stepMap[step]].classList.add('active');
+            }
+        }
+
+        // Dummy functions for delay and limit buttons (Skanect style)
+        function setDelay() {
+            // Placeholder function - can be extended later
+            alert('Delay setting: 3 seconds\n\nThis feature can be extended to allow custom delay settings.');
+        }
+
+        function setLimit() {
+            // Placeholder function - can be extended later
+            alert('Limit setting: None\n\nThis feature can be extended to allow custom scan limits.');
+        }
         
         function processPointCloud(data) {
             // 🔥 CRITICAL: Check if capture is still active - stop processing if not
@@ -1602,24 +1876,265 @@
             if (pointCloud.length === 0) {
                 kinectPosition = pointCloudProcessor.estimateKinectPosition(newPoints);
             }
-        }
 
-        // Dummy functions for delay and limit buttons (Skanect style)
-        function setDelay() {
-            // Placeholder function - can be extended later
-            alert('Delay setting: 3 seconds\n\nThis feature can be extended to allow custom delay settings.');
-        }
+            // Filter menggunakan depth camera untuk menangkap objek 3D anggota tubuh
+            // Objek dekat (anggota tubuh) akan berwarna merah/oranye, background jauh akan abu-abu/hitam
+            // Only apply filter if we have enough points to filter effectively
+            let humanBodyPoints = newPoints;
+            if (newPoints.length > 100) {
+                try {
+                    // Filter berdasarkan depth - seperti depth map dengan warna
+                    // Objek dekat (0.5-3.5m) = objek target, background sangat jauh (>3.5m) = dihilangkan
+                    humanBodyPoints = filterDepthBasedBodyParts(newPoints);
+                    // If filter removed too many points (>90%), use original points
+                    // Threshold lebih tinggi untuk mempertahankan lebih banyak points
+                    if (humanBodyPoints.length < newPoints.length * 0.1) {
+                        console.warn('⚠️ Filter too aggressive, using original points');
+                        humanBodyPoints = newPoints;
+                    }
+                } catch (err) {
+                    console.error('❌ Filter error, using original points:', err);
+                    humanBodyPoints = newPoints;
+                }
+            }
 
-        function setLimit() {
-            // Placeholder function - can be extended later
-            alert('Limit setting: None\n\nThis feature can be extended to allow custom scan limits.');
+            // ICP Alignment DISABLED - menyebabkan duplikasi parah untuk 360° scans
+            // Strategi yang lebih baik: aggressive voxel-based deduplication
+            // ICP hanya cocok untuk multi-phase scan, bukan continuous 360° scan
+
+            // CRITICAL: Remove duplicate/overlapping points to prevent layering
+            // Use voxel-based deduplication for better results
+            const beforeDedup = humanBodyPoints.length;
+            humanBodyPoints = removeDuplicatePoints(humanBodyPoints, pointCloud);
+
+            console.log('📊 Deduplication: ' + beforeDedup + ' → ' + humanBodyPoints.length + ' points');
+
+            // Add filtered and deduplicated points to point cloud
+            pointCloud.push(...humanBodyPoints);
+            frameCount++;
+
+            const addedCount = humanBodyPoints.length;
+            const duplicatesRemoved = beforeDedup - addedCount;
+            console.log('✅ Added ' + addedCount + ' points (from ' + newPoints.length + ', duplicates removed: ' + duplicatesRemoved + '). Total: ' + pointCloud.length.toLocaleString());
+
+            // Update display and stats (throttled)
+            requestAnimationFrame(() => {
+                const now = Date.now();
+                if (now - lastRenderTime >= renderThrottle) {
+                    updatePointCloudDisplay();
+                    // Center model more frequently to keep it visible
+                    setTimeout(() => centerModel(), 100);
+                    lastRenderTime = now;
+                }
+                updateStats();
+            });
+            
+            console.log('✅✅✅ Successfully added', newPoints.length, 'points. Total:', pointCloud.length, 'points from', frameCount, 'frames');
+            
+            const debugMsgEl = document.getElementById('debugMessage');
+            if (debugMsgEl) {
+                const duplicatesRemoved = newPoints.length - humanBodyPoints.length;
+                debugMsgEl.textContent = `✅ Added ${humanBodyPoints.length} points (removed ${duplicatesRemoved} duplicates/background). Total: ${pointCloud.length} points`;
+            }
         }
-        
         
         /**
          * Process depth frame as mesh directly (seperti Skanect)
          * Menghasilkan mesh utuh, bukan point cloud terpisah
          */
+        function processDepthFrameAsMesh(payload, width, height) {
+            if (!depthMeshConverter || !payload || !payload.points) {
+                console.warn('⚠️ Cannot process as mesh - falling back to point cloud');
+                processPointCloud(payload);
+                return;
+            }
+            
+            console.log('🔷 Processing depth frame as mesh (utuh, bukan point cloud)...');
+            
+            // Store frame for accumulation
+            meshFrames.push({
+                points: payload.points,
+                width: width || 320,
+                height: height || 240
+            });
+            
+            // Limit frames to prevent memory issues (keep last 10 frames)
+            if (meshFrames.length > 10) {
+                meshFrames.shift();
+            }
+            
+            // Generate mesh from accumulated frames
+            // This creates a continuous surface, not separate points
+            const geometry = depthMeshConverter.mergeDepthFrames(meshFrames);
+            
+            if (geometry) {
+                // Remove old mesh if exists
+                const oldMesh = scene.getObjectByName('depthMesh');
+                if (oldMesh) {
+                    scene.remove(oldMesh);
+                }
+                
+                // Create mesh material with vertex colors
+                const material = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    side: THREE.DoubleSide,
+                    flatShading: false
+                });
+                
+                // Create mesh object
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.name = 'depthMesh';
+                
+                // Posisikan mesh di atas grid (Y >= 0)
+                const box = new THREE.Box3().setFromObject(mesh);
+                if (!box.isEmpty()) {
+                    const boxMin = box.min;
+                    const yOffset = -boxMin.y; // Offset untuk memindahkan mesh ke Y = 0
+                    const center = box.getCenter(new THREE.Vector3());
+                    
+                    // Pastikan mesh selalu berada di atas grid (Y >= 0)
+                    const finalY = Math.max(0, yOffset);
+                    mesh.position.set(
+                        -center.x, // Center X
+                        finalY, // Di atas grid (Y >= 0)
+                        -center.z  // Center Z
+                    );
+                    mesh.updateMatrixWorld(); // Update matrix setelah positioning
+                }
+                
+                // Add to scene
+                scene.add(mesh);
+                
+                // Hide point cloud if mesh is shown
+                const pointCloudObj = scene.getObjectByName('pointCloud');
+                if (pointCloudObj) {
+                    pointCloudObj.visible = false;
+                }
+                
+                // Update stats
+                const pointCountEl = document.getElementById('pointCount');
+                if (pointCountEl) {
+                    pointCountEl.textContent = geometry.attributes.position.count.toLocaleString() + ' vertices';
+                }
+                
+                // Center camera
+                setTimeout(() => centerModel(), 100);
+                
+                console.log('✅ Mesh updated:', {
+                    vertices: geometry.attributes.position.count,
+                    faces: geometry.index ? geometry.index.count / 3 : 0
+                });
+            } else {
+                console.warn('⚠️ Failed to generate mesh, falling back to point cloud');
+                processPointCloud(payload);
+            }
+        }
+        
+        /**
+         * Process depth frame as mesh directly (seperti Skanect)
+         * Menghasilkan mesh utuh, bukan point cloud terpisah
+         */
+        function processDepthFrameAsMesh(payload, width, height) {
+            if (!depthMeshConverter || !payload || !payload.points) {
+                console.warn('⚠️ Cannot process as mesh - falling back to point cloud');
+                processPointCloud(payload);
+                return;
+            }
+            
+            console.log('🔷 Processing depth frame as mesh (utuh, bukan point cloud)...');
+            
+            // Store frame for accumulation
+            meshFrames.push({
+                points: payload.points,
+                width: width || 320,
+                height: height || 240
+            });
+            
+            // Limit frames to prevent memory issues (keep last 10 frames)
+            if (meshFrames.length > 10) {
+                meshFrames.shift();
+            }
+            
+            // Generate mesh from accumulated frames
+            // This creates a continuous surface, not separate points
+            const geometry = depthMeshConverter.mergeDepthFrames(meshFrames);
+            
+            if (geometry) {
+                // Remove old mesh if exists
+                const oldMesh = scene.getObjectByName('depthMesh');
+                if (oldMesh) {
+                    scene.remove(oldMesh);
+                }
+                
+                // Create mesh material with vertex colors
+                const material = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    side: THREE.DoubleSide,
+                    flatShading: false
+                });
+                
+                // Create mesh object
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.name = 'depthMesh';
+                
+                // Validasi ukuran mesh: tidak boleh lebih besar dari 350mm (0.35m)
+                const maxObjectSize = window.maxObjectSize || 0.35; // 350mm
+                const box = new THREE.Box3().setFromObject(mesh);
+                if (!box.isEmpty()) {
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    
+                    let scaleFactor = 1.0;
+                    if (maxDim > maxObjectSize) {
+                        scaleFactor = maxObjectSize / maxDim;
+                        console.warn('⚠️ Depth mesh terlalu besar (' + (maxDim * 1000).toFixed(0) + 'mm), scaling ke ' + (maxObjectSize * 1000).toFixed(0) + 'mm (scale: ' + scaleFactor.toFixed(3) + ')');
+                        mesh.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                        // Recalculate box after scaling
+                        box.setFromObject(mesh);
+                    }
+                    
+                    const boxMin = box.min;
+                    const yOffset = -boxMin.y; // Offset untuk memindahkan mesh ke Y = 0
+                    const center = box.getCenter(new THREE.Vector3());
+                    
+                    // Pastikan mesh selalu berada di atas grid (Y >= 0)
+                    const finalY = Math.max(0, yOffset);
+                    mesh.position.set(
+                        -center.x, // Center X
+                        finalY, // Di atas grid (Y >= 0)
+                        -center.z  // Center Z
+                    );
+                    mesh.updateMatrixWorld(); // Update matrix setelah positioning
+                }
+                
+                // Add to scene
+                scene.add(mesh);
+                
+                // Hide point cloud if mesh is shown
+                const pointCloudObj = scene.getObjectByName('pointCloud');
+                if (pointCloudObj) {
+                    pointCloudObj.visible = false;
+                }
+                
+                // Update stats
+                const pointCountEl = document.getElementById('pointCount');
+                if (pointCountEl) {
+                    pointCountEl.textContent = geometry.attributes.position.count.toLocaleString() + ' vertices';
+                }
+                
+                // Center camera
+                setTimeout(() => centerModel(), 100);
+                
+                console.log('✅ Mesh updated:', {
+                    vertices: geometry.attributes.position.count,
+                    faces: geometry.index ? geometry.index.count / 3 : 0
+                });
+            } else {
+                console.warn('⚠️ Failed to generate mesh, falling back to point cloud');
+                processPointCloud(payload);
+            }
+        }
+        
         function updatePointCloudDisplay() {
             if (!scene) {
                 console.warn('Scene not initialized');
@@ -1793,12 +2308,6 @@
         }
         
         function startScan() {
-            // Reset the new fusion system for a fresh scan
-            if (kinectFusion) {
-                kinectFusion.reset();
-            }
-            currentYAngle = 0;
-
             console.log('🔵🔵🔵 startScan() called - SIMPLIFIED MODE 🔵🔵🔵');
 
             if (!connected) {
@@ -5000,12 +5509,6 @@
         }
         
         function clearScan() {
-            // Reset the new fusion system
-            if (kinectFusion) {
-                kinectFusion.reset();
-            }
-            currentYAngle = 0;
-
             // Reset multi-phase data
             scanPhase = 0;
             pointCloudFront = [];
