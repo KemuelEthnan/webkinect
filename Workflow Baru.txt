@@ -1,0 +1,1047 @@
+https://chatgpt.com/share/693fe5c9-6420-8001-b1a8-b29be48c42c9
+
+WORKFLOW 1
+Akuisisi Data + Integrasi Frame ke Canonical Model (TSDF)
+Tujuan utama Workflow 1
+
+Membuat model 3D kumulatif dari banyak frame depth saat objek berputar, bukan hanya menampilkan frame terakhir.
+
+Output akhir workflow 1:
+
+Sebuah TSDF Volume (Canonical Model) yang berisi gabungan seluruh permukaan objek 360 derajat
+
+Belum mesh final, tetapi data volumetrik yang stabil dan konsisten
+
+Masalah yang sedang terjadi di proyek Anda sekarang
+
+Saat ini alur Anda kemungkinan besar seperti ini:
+
+Kinect
+→ depth frame
+→ point cloud
+→ kirim ke browser
+→ render di Three.js
+
+Akibatnya:
+
+Saat berputar, tampilan terlihat stabil
+
+Saat stop, hanya frame terakhir yang tersisa
+
+Tidak ada model kumulatif
+
+Penyebab utama:
+
+Tidak ada TSDF integration
+
+Tidak ada canonical model
+
+Tidak ada frame fusion
+
+Workflow 1 bertugas mengubah total alur ini.
+
+Konsep inti yang harus Anda pahami terlebih dahulu
+
+Dynamic Fusion tidak bekerja dengan point cloud langsung.
+Ia bekerja dengan volume 3D (TSDF).
+
+TSDF Volume:
+
+Ruang 3D dibagi menjadi voxel
+
+Setiap voxel menyimpan jarak ke permukaan terdekat
+
+Banyak frame depth digabung ke volume yang sama
+
+Artinya:
+
+Frame ke-1, ke-2, ke-300 semuanya masuk ke satu model
+
+Inilah yang memungkinkan scan 360 derajat
+
+Arsitektur Workflow 1 (tingkat tinggi)
+
+Kinect v1
+→ Depth Acquisition
+→ Depth Preprocessing
+→ Pose Estimation
+→ TSDF Integration
+→ Canonical Volume Update
+
+Browser belum terlibat di tahap ini.
+
+STEP 1 — Akuisisi Depth Frame
+Input
+
+Kinect v1 depth frame
+
+Resolusi standar (640x480)
+
+30 FPS
+
+Yang harus dilakukan
+
+Ambil depth sebagai buffer 16-bit
+
+Konversi ke satuan meter
+
+Timestamp setiap frame
+
+Contoh struktur data:
+
+struct DepthFrame {
+    uint16_t* depth;
+    int width;
+    int height;
+    double timestamp;
+};
+
+Catatan penting
+
+Jangan langsung kirim ke browser
+
+Simpan frame ini di pipeline server
+
+STEP 2 — Depth Preprocessing
+Tujuan
+
+Mengurangi noise agar TSDF stabil.
+
+Proses wajib
+
+Depth range filter
+Buang depth di luar 0.6 m – 2.5 m
+
+Bilateral filter
+Menghaluskan tanpa merusak tepi
+
+Hole filling ringan
+Isi lubang kecil akibat sensor noise
+
+Output
+
+Depth frame yang lebih stabil dan konsisten
+
+STEP 3 — Pose Estimation (Tracking Kamera atau Objek)
+
+Ini adalah kunci agar frame bisa digabung.
+
+Apa yang dilakukan
+
+Hitung transformasi antara frame sebelumnya dan frame saat ini
+
+Menghasilkan pose kamera relatif
+
+Metode yang umum
+
+ICP (Point-to-Plane)
+
+Pyramid ICP (coarse ke fine)
+
+Depth-only tracking (cukup untuk Kinect v1)
+
+Contoh output pose:
+
+Eigen::Matrix4f currentPose;
+
+
+Jika tracking gagal:
+
+Frame tidak boleh diintegrasikan
+
+Ini mencegah model rusak
+
+STEP 4 — TSDF Volume Initialization
+Dilakukan satu kali saat scan dimulai
+Parameter penting
+
+Volume size: misalnya 3m x 3m x 3m
+
+Voxel size: 5mm – 10mm
+
+Truncation distance: 3 x voxel size
+
+Contoh:
+
+TSDFVolume volume(
+    voxelSize = 0.005f,
+    volumeSize = 3.0f
+);
+
+
+Volume ini adalah canonical space.
+
+STEP 5 — TSDF Integration (Frame Fusion)
+
+Ini adalah inti Dynamic Fusion.
+
+Untuk setiap depth frame valid
+
+Unproject depth ke 3D point
+
+Transform point ke canonical space menggunakan pose
+
+Update voxel TSDF value
+
+Akumulasi weight
+
+Pseudocode:
+
+if (trackingOK) {
+    volume.integrate(depthFrame, currentPose);
+}
+
+Yang terjadi saat Anda berputar
+
+Permukaan depan masuk ke volume
+
+Saat Anda berputar, sisi samping dan belakang masuk
+
+Semua digabung ke satu model
+
+Inilah alasan demo Dynamic Fusion bisa full body.
+
+STEP 6 — Canonical Model Update
+
+Setelah beberapa frame:
+
+Volume sudah berisi data permukaan dari banyak sudut
+
+Ini bukan mesh, tetapi data volumetrik
+
+Pada tahap ini:
+
+Anda SUDAH punya full-body secara data
+
+Tapi belum bisa ditampilkan rapi di browser
+
+OUTPUT AKHIR WORKFLOW 1
+
+Setelah Workflow 1 selesai:
+
+Anda memiliki:
+
+TSDF Volume berisi seluruh permukaan objek
+
+Frame terakhir tidak lagi menentukan hasil
+
+Model sudah bersifat kumulatif
+
+Anda BELUM:
+
+Mengekstrak mesh
+
+Mengirim ke Three.js
+
+Melakukan post-processing
+
+Itu akan dilakukan di Workflow 2.
+
+Validasi bahwa Workflow 1 berhasil
+
+Tanda-tanda berhasil:
+
+Anda bisa berputar 360 derajat
+
+Data volume bertambah, bukan tergantikan
+
+Jika Anda hentikan input, volume tetap utuh
+
+Jika diekstrak mesh kasar, bentuk tubuh sudah lengkap
+
+Jika ini belum tercapai:
+
+Jangan lanjut ke workflow berikutnya
+
+WORKFLOW 1
+Akuisisi Data + Integrasi Frame ke Canonical Model (TSDF)
+Tujuan utama Workflow 1
+
+Membuat model 3D kumulatif dari banyak frame depth saat objek berputar, bukan hanya menampilkan frame terakhir.
+
+Output akhir workflow 1:
+
+Sebuah TSDF Volume (Canonical Model) yang berisi gabungan seluruh permukaan objek 360 derajat
+
+Belum mesh final, tetapi data volumetrik yang stabil dan konsisten
+
+Masalah yang sedang terjadi di proyek Anda sekarang
+
+Saat ini alur Anda kemungkinan besar seperti ini:
+
+Kinect
+→ depth frame
+→ point cloud
+→ kirim ke browser
+→ render di Three.js
+
+Akibatnya:
+
+Saat berputar, tampilan terlihat stabil
+
+Saat stop, hanya frame terakhir yang tersisa
+
+Tidak ada model kumulatif
+
+Penyebab utama:
+
+Tidak ada TSDF integration
+
+Tidak ada canonical model
+
+Tidak ada frame fusion
+
+Workflow 1 bertugas mengubah total alur ini.
+
+Konsep inti yang harus Anda pahami terlebih dahulu
+
+Dynamic Fusion tidak bekerja dengan point cloud langsung.
+Ia bekerja dengan volume 3D (TSDF).
+
+TSDF Volume:
+
+Ruang 3D dibagi menjadi voxel
+
+Setiap voxel menyimpan jarak ke permukaan terdekat
+
+Banyak frame depth digabung ke volume yang sama
+
+Artinya:
+
+Frame ke-1, ke-2, ke-300 semuanya masuk ke satu model
+
+Inilah yang memungkinkan scan 360 derajat
+
+Arsitektur Workflow 1 (tingkat tinggi)
+
+Kinect v1
+→ Depth Acquisition
+→ Depth Preprocessing
+→ Pose Estimation
+→ TSDF Integration
+→ Canonical Volume Update
+
+Browser belum terlibat di tahap ini.
+
+STEP 1 — Akuisisi Depth Frame
+Input
+
+Kinect v1 depth frame
+
+Resolusi standar (640x480)
+
+30 FPS
+
+Yang harus dilakukan
+
+Ambil depth sebagai buffer 16-bit
+
+Konversi ke satuan meter
+
+Timestamp setiap frame
+
+Contoh struktur data:
+
+struct DepthFrame {
+    uint16_t* depth;
+    int width;
+    int height;
+    double timestamp;
+};
+
+Catatan penting
+
+Jangan langsung kirim ke browser
+
+Simpan frame ini di pipeline server
+
+STEP 2 — Depth Preprocessing
+Tujuan
+
+Mengurangi noise agar TSDF stabil.
+
+Proses wajib
+
+Depth range filter
+Buang depth di luar 0.6 m – 2.5 m
+
+Bilateral filter
+Menghaluskan tanpa merusak tepi
+
+Hole filling ringan
+Isi lubang kecil akibat sensor noise
+
+Output
+
+Depth frame yang lebih stabil dan konsisten
+
+STEP 3 — Pose Estimation (Tracking Kamera atau Objek)
+
+Ini adalah kunci agar frame bisa digabung.
+
+Apa yang dilakukan
+
+Hitung transformasi antara frame sebelumnya dan frame saat ini
+
+Menghasilkan pose kamera relatif
+
+Metode yang umum
+
+ICP (Point-to-Plane)
+
+Pyramid ICP (coarse ke fine)
+
+Depth-only tracking (cukup untuk Kinect v1)
+
+Contoh output pose:
+
+Eigen::Matrix4f currentPose;
+
+
+Jika tracking gagal:
+
+Frame tidak boleh diintegrasikan
+
+Ini mencegah model rusak
+
+STEP 4 — TSDF Volume Initialization
+Dilakukan satu kali saat scan dimulai
+Parameter penting
+
+Volume size: misalnya 3m x 3m x 3m
+
+Voxel size: 5mm – 10mm
+
+Truncation distance: 3 x voxel size
+
+Contoh:
+
+TSDFVolume volume(
+    voxelSize = 0.005f,
+    volumeSize = 3.0f
+);
+
+
+Volume ini adalah canonical space.
+
+STEP 5 — TSDF Integration (Frame Fusion)
+
+Ini adalah inti Dynamic Fusion.
+
+Untuk setiap depth frame valid
+
+Unproject depth ke 3D point
+
+Transform point ke canonical space menggunakan pose
+
+Update voxel TSDF value
+
+Akumulasi weight
+
+Pseudocode:
+
+if (trackingOK) {
+    volume.integrate(depthFrame, currentPose);
+}
+
+Yang terjadi saat Anda berputar
+
+Permukaan depan masuk ke volume
+
+Saat Anda berputar, sisi samping dan belakang masuk
+
+Semua digabung ke satu model
+
+Inilah alasan demo Dynamic Fusion bisa full body.
+
+STEP 6 — Canonical Model Update
+
+Setelah beberapa frame:
+
+Volume sudah berisi data permukaan dari banyak sudut
+
+Ini bukan mesh, tetapi data volumetrik
+
+Pada tahap ini:
+
+Anda SUDAH punya full-body secara data
+
+Tapi belum bisa ditampilkan rapi di browser
+
+OUTPUT AKHIR WORKFLOW 1
+
+Setelah Workflow 1 selesai:
+
+Anda memiliki:
+
+TSDF Volume berisi seluruh permukaan objek
+
+Frame terakhir tidak lagi menentukan hasil
+
+Model sudah bersifat kumulatif
+
+Anda BELUM:
+
+Mengekstrak mesh
+
+Mengirim ke Three.js
+
+Melakukan post-processing
+
+Itu akan dilakukan di Workflow 2.
+
+Validasi bahwa Workflow 1 berhasil
+
+Tanda-tanda berhasil:
+
+Anda bisa berputar 360 derajat
+
+Data volume bertambah, bukan tergantikan
+
+Jika Anda hentikan input, volume tetap utuh
+
+Jika diekstrak mesh kasar, bentuk tubuh sudah lengkap
+
+Jika ini belum tercapai:
+
+Jangan lanjut ke workflow berikutnya
+
+WORKFLOW 3
+Pose Tracking + Frame Fusion yang Benar (Fondasi Dynamic Fusion)
+Tujuan utama workflow ini
+
+Menghentikan masalah “hanya frame terakhir yang terlihat”
+
+Memastikan SEMUA frame depth selama user berputar benar-benar:
+
+dilacak posenya
+
+digabungkan ke dalam satu model global
+
+Menjadikan TSDF volume sebagai sumber kebenaran utama, bukan point cloud live
+
+Tanpa workflow ini, full-body scan 360 derajat tidak mungkin utuh.
+
+OUTPUT AKHIR WORKFLOW 3
+
+Setelah workflow ini selesai:
+
+Server C++ memiliki pose tracking stabil
+
+Setiap frame depth punya transform world yang benar
+
+TSDF volume menyimpan seluruh permukaan tubuh
+
+Preview mesh yang dikirim ke Three.js mulai terlihat “menyatu” dan tidak hancur
+
+Drift masih mungkin ada, tapi bentuk sudah utuh
+
+ARSITEKTUR LOGIS WORKFLOW 3
+Depth Frame (Kinect)
+↓
+Preprocessed Depth
+↓
+Pose Estimation (ICP)
+↓
+Global Camera Pose
+↓
+TSDF Integration (World Space)
+↓
+Canonical Model Update
+↓
+Preview Mesh Extraction
+↓
+WebSocket → Three.js
+
+BAGIAN A — Pose Tracking (INI BAGIAN PALING KRUSIAL)
+
+Dynamic Fusion tidak bisa bekerja tanpa pose tracking.
+
+1. Konsep yang HARUS dipahami
+
+Setiap depth frame harus punya:
+
+Pose kamera relatif ke model global
+
+Bukan hanya posisi kamera sekarang, tapi hubungannya dengan semua frame sebelumnya
+
+Jika pose salah:
+
+TSDF akan rusak
+
+Model hancur
+
+Loop 360 derajat tidak pernah tertutup
+
+2. Metode pose tracking yang dipakai (versi realistis)
+
+Gunakan Rigid RGB-D Odometry berbasis ICP terlebih dahulu
+Non-rigid belum masuk di workflow ini
+
+Struktur ICP:
+
+Input:
+
+Depth frame sekarang
+
+Model surface sebelumnya (raycast TSDF)
+
+Output:
+
+Transform 4x4 kamera ke world
+
+3. Pipeline ICP yang WAJIB
+Step 1 — Raycast TSDF
+
+Dari TSDF volume, raycast:
+
+vertex map
+
+normal map
+
+Ini adalah “model saat ini”
+
+Step 2 — Unproject depth frame
+
+Depth → vertex map kamera
+
+Hitung normal per pixel
+
+Step 3 — ICP Point-to-Plane
+
+Match depth vertex ke model vertex
+
+Minimize error:
+
+dot( normal_model, (p_model - T * p_depth) )
+
+Step 4 — Multi-resolution pyramid
+
+Level 0: 160x120
+
+Level 1: 320x240
+
+Level 2: 640x480
+
+Solve dari kasar ke halus
+
+Step 5 — Validasi tracking
+
+Jika error terlalu besar:
+
+tolak frame
+
+jangan integrate ke TSDF
+
+4. Parameter awal yang disarankan
+ICP iterations per level: 10
+Distance threshold: 0.05 meter
+Normal angle threshold: 30 derajat
+Min correspondences: 1000
+
+BAGIAN B — TSDF Integration (Bukan Point Cloud)
+1. Kesalahan umum yang HARUS dihindari
+
+Yang sering terjadi:
+
+Depth frame langsung dikirim ke Three.js
+
+Tidak pernah disimpan
+
+Tidak pernah difusikan
+
+Yang benar:
+
+Depth frame hanya input
+
+Output selalu berasal dari TSDF
+
+2. Struktur TSDF volume
+
+Minimal:
+
+Voxel size: 8–10 mm
+
+Volume size: cukup untuk tubuh manusia
+contoh: 3m x 3m x 3m
+
+Gunakan:
+
+Sparse voxel hashing
+
+Bukan array penuh (RAM akan habis)
+
+3. Proses integrasi TSDF
+
+Untuk setiap voxel:
+
+Proyeksikan voxel ke kamera
+
+Ambil depth terdekat
+
+Hitung signed distance
+
+Update TSDF dan weight
+
+Pseudo-code inti:
+
+for voxel in visible_voxels:
+    z = project(voxel, cameraPose)
+    sdf = depth[z] - voxelDepth
+    if sdf > -truncation:
+        tsdf = clamp(sdf / truncation)
+        voxel.tsdf = weightedAverage(voxel.tsdf, tsdf)
+        voxel.weight++
+
+BAGIAN C — Preview Model (Yang Dilihat di Browser)
+1. Preview BUKAN hasil akhir
+
+Preview hanya:
+
+Untuk feedback visual
+
+Untuk memastikan tracking benar
+
+Kualitas:
+
+Kasar
+
+Low resolution
+
+Diekstrak cepat
+
+2. Cara extract preview mesh
+
+Gunakan:
+
+Marching Cubes
+
+Voxel size besar
+
+Extract tiap 0.3–0.5 detik
+
+Jangan:
+
+Extract setiap frame
+
+Akan membunuh performa
+
+3. Alur preview ke Three.js
+TSDF Volume
+↓
+Marching Cubes (low-res)
+↓
+PLY / Binary Mesh
+↓
+WebSocket
+↓
+Three.js
+
+
+Three.js hanya:
+
+Load mesh
+
+Replace object
+
+Tidak menghitung ulang geometry berat
+
+BAGIAN D — Sinkronisasi dengan UI (index.html)
+Tombol Start Scan
+
+Hanya mengirim:
+
+"START_SCAN"
+
+Server:
+
+reset TSDF
+
+reset pose
+
+mulai integrate
+
+Tombol Stop Scan
+
+Server:
+
+stop integrate
+
+simpan TSDF
+
+lanjut ke workflow berikutnya
+
+CIRI WORKFLOW 3 SUDAH BENAR
+
+Checklist verifikasi:
+
+Saat user berputar 360 derajat:
+
+model tidak lompat
+
+tidak pecah
+
+Bagian belakang tubuh muncul
+
+Preview mesh makin tebal, bukan overwrite
+
+Setelah stop:
+
+mesh masih utuh
+
+bukan hanya pose terakhir
+
+Jika salah satu tidak terjadi, berarti:
+
+Pose tracking gagal
+
+TSDF tidak diintegrasikan
+
+Raycast tidak benar
+
+BATASAN WORKFLOW 3
+
+Yang BELUM ditangani:
+
+Drift global
+
+Loop closure
+
+Gerakan tubuh (non-rigid)
+
+Itu akan diselesaikan di Workflow 4
+
+RANGKUMAN WORKFLOW 3
+
+Ini adalah jantung sistem
+
+Tanpa ini, dynamic fusion mustahil
+
+Semua frame HARUS masuk TSDF
+
+Browser hanya viewer, bukan processor
+
+WORKFLOW 5
+GLOBAL CANONICAL FUSION + LOOP STABILIZATION
+
+(Titik krusial agar hasil bukan frame terakhir, tetapi model 360° utuh)
+
+TUJUAN WORKFLOW 5
+
+Mengatasi masalah utama yang Anda alami:
+
+Saat scan berjalan: tampilan stabil
+
+Saat stop: yang tersisa hanya posisi terakhir
+
+Penyebabnya:
+
+Canonical model belum benar-benar dikunci
+
+Integrasi masih bersifat lokal (frame-based)
+
+Tidak ada stabilisasi global terhadap seluruh TSDF
+
+Workflow ini membuat sistem:
+
+Menyadari bahwa user sudah berputar 360°
+
+Menyatukan semua permukaan ke satu referensi global
+
+Menghilangkan ketergantungan pada frame terakhir
+
+MASALAH UTAMA YANG DISELESAIKAN
+
+Tanpa workflow ini:
+
+TSDF Anda hanya “aktif” mengikuti pose terakhir
+
+Warped model hanya dirender, bukan disimpan permanen
+
+Saat stop, render berhenti → hanya frame terakhir yang tampak
+
+Dengan workflow ini:
+
+Canonical TSDF benar-benar berisi seluruh tubuh
+
+Pose drift dikoreksi
+
+Mesh final diekstrak dari canonical space, bukan camera space
+
+STRUKTUR DATA BARU (WAJIB)
+
+Tambahkan struktur berikut di engine C++ Anda:
+
+struct Keyframe {
+    Mat4 pose;
+    DepthFrame depth;
+    ColorFrame color;
+};
+
+std::vector<Keyframe> keyframes;
+
+TSDFVolume canonicalTSDF;
+WarpField globalWarpField;
+PoseGraph poseGraph;
+
+
+Ini tidak opsional.
+Tanpa ini, full-body scan tidak mungkin.
+
+ALUR DATA WORKFLOW 5
+Depth Frame
+   ↓
+Pose Estimation (ICP / Non-rigid)
+   ↓
+Warp to Canonical Space
+   ↓
+Integrate into Canonical TSDF
+   ↓
+Save as Keyframe
+   ↓
+Periodic Global Optimization
+
+
+Perhatikan:
+Integrasi SELALU ke canonical space, bukan ke world pose terakhir.
+
+LANGKAH 5.1 – KEYFRAME COLLECTION (PENTING)
+Kapan frame menjadi keyframe?
+
+Gunakan aturan:
+
+bool isKeyframe(currentPose, lastKeyframePose) {
+    return translation > 3 cm
+        || rotation > 10 degrees
+        || timeSinceLast > 1.0s;
+}
+
+
+Jika ya:
+
+Simpan depth + pose
+
+Tambahkan node ke pose graph
+
+LANGKAH 5.2 – CANONICAL TSDF INTEGRATION
+
+Inilah bagian yang kemungkinan belum Anda lakukan dengan benar.
+
+Yang SALAH (umum terjadi)
+depth → pose terakhir → integrate → render
+
+Yang BENAR (DynamicFusion)
+depth
+  → warpField.inverse()
+  → canonical space
+  → integrate TSDF
+
+
+Contoh pseudocode:
+
+for each depthPixel:
+    Vec3 p_cam = unproject(depth);
+    Vec3 p_canonical = warpField.inverseWarp(p_cam);
+    canonicalTSDF.integrate(p_canonical);
+
+
+Jika Anda mengintegrasikan langsung ke camera/world space:
+
+Model akan “berjalan”
+
+Dan akhirnya hanya tersisa frame terakhir
+
+LANGKAH 5.3 – POSE GRAPH GLOBAL
+
+Setiap keyframe menjadi node.
+
+Edges:
+
+Sequential edge (frame ke frame)
+
+Loop edge (jika pose mendekati awal)
+
+Contoh:
+
+poseGraph.addNode(keyframe.pose);
+poseGraph.addEdge(i, i+1, relativePose);
+
+
+Jika jarak pose saat ini ke pose awal < threshold:
+
+Tambahkan loop edge
+
+LANGKAH 5.4 – LOOP STABILIZATION
+
+Ini penting untuk scan 360°.
+
+Jika user berputar penuh:
+
+Pose awal dan akhir harus sejajar
+
+Jika tidak → model akan terbuka
+
+Optimasi:
+
+poseGraph.optimize(); // g2o / ceres
+
+
+Setelah optimasi:
+
+Update semua pose keyframe
+
+Rebuild warp field global
+
+LANGKAH 5.5 – GLOBAL RE-INTEGRATION (WAJIB)
+
+Setelah optimasi pose graph:
+
+canonicalTSDF.clear();
+
+for each keyframe:
+    for each depthPixel:
+        p_cam = unproject(depth);
+        p_canonical = optimizedWarp.inverseWarp(p_cam);
+        canonicalTSDF.integrate(p_canonical);
+
+
+Ini mahal secara komputasi, tapi:
+
+Dilakukan di background
+
+Bisa dijalankan saat scan berhenti
+
+Tanpa langkah ini:
+
+Drift tetap ada
+
+Model tidak simetris
+
+Full body tidak rapat
+
+OUTPUT WORKFLOW 5
+
+Setelah workflow ini selesai, Anda HARUS punya:
+
+Canonical TSDF berisi seluruh tubuh
+
+Model tidak tergantung pose terakhir
+
+Semua sisi (depan, samping, belakang) tersimpan
+
+Data siap untuk diekstrak menjadi mesh final
+
+Pada titik ini:
+
+Three.js masih boleh menampilkan preview
+
+Tetapi sumber kebenaran adalah canonicalTSDF
+
+STATUS SISTEM SETELAH WORKFLOW 5
+[OK] Depth frame stabil
+[OK] Pose tracking berjalan
+[OK] Non-rigid warp aktif
+[OK] Canonical TSDF terisi penuh
+[OK] Loop drift dikoreksi
+[NOT YET] Mesh final
+

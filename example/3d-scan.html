@@ -249,7 +249,7 @@
                     <button id="testBtn" onclick="testThreeJS()" title="Test Three.js rendering">🧪 Test Render</button>
                     <button id="startScanBtn" onclick="startScan()" disabled>Mulai Scan</button>
                     <button id="stopScanBtn" onclick="stopScan()" disabled>Stop Scan</button>
-                    <button id="generateMeshBtn" onclick="generateMesh()" disabled>Generate Mesh</button>
+                            <button id="generateMeshBtn" class="btn-primary" onclick="generateMesh()" disabled style="display: none; width: 100%; padding: 12px; margin-bottom: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">🔷 Generate Mesh</button>
                     <button id="exportSTLBtn" onclick="exportSTL()" disabled>Export STL</button>
                     <button id="clearBtn" onclick="clearScan()" disabled>Clear</button>
                 </div>
@@ -343,16 +343,12 @@
         // WebSocket connection
         var socket = null;
         var connected = false;
-        var isScanning = false;
-        var pointCloud = [];
-        var filteredPointCloud = [];
+        var currentMode = 'normal'; // 'normal' or 'scanning'
+
+        // --- 3D Scanning variables ---
         var mesh = null;
         var scene, camera, renderer, controls;
-        
-        // Filtering parameters
-        var minDistance = 0.85; // meters
-        var maxDistance = 2.5;  // meters
-        var outlierThreshold = 10; // neighbors
+        var viewerInitialized = false;
 
         // Three.js setup
         function initViewer() {
@@ -402,6 +398,19 @@
             let isDragging = false;
             let previousMousePosition = { x: 0, y: 0 };
             
+            // Initialize the persistent point cloud object
+            const initialGeometry = new THREE.BufferGeometry();
+            initialGeometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+            initialGeometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+            const pointsMaterial = new THREE.PointsMaterial({
+                size: 0.02,
+                vertexColors: true,
+                sizeAttenuation: false
+            });
+            pointCloudObject = new THREE.Points(initialGeometry, pointsMaterial);
+            pointCloudObject.name = 'pointCloud';
+            scene.add(pointCloudObject);
+
             renderer.domElement.addEventListener('mousedown', (e) => {
                 isDragging = true;
             });
@@ -569,105 +578,59 @@
             };
             
             socket.onmessage = function(event) {
-                if (typeof event.data === "string") {
-                    try {
-                        const data = JSON.parse(event.data);
-                            // Check if it's point cloud data
-                        if (data.points && Array.isArray(data.points)) {
-                            console.log('✅ Point cloud data received:', {
-                                pointCount: data.points.length,
-                                width: data.width,
-                                height: data.height,
-                                isScanning: isScanning,
-                                firstPoint: data.points[0] ? {
-                                    x: data.points[0].x,
-                                    y: data.points[0].y,
-                                    z: data.points[0].z,
-                                    r: data.points[0].r,
-                                    g: data.points[0].g,
-                                    b: data.points[0].b
-                                } : 'none',
-                                samplePoints: data.points.slice(0, 5).map(p => ({ x: p.x, y: p.y, z: p.z }))
-                            });
-                            
-                            // Update debug info
-                            updateDebugInfo(`📦 Received ${data.points.length} points`);
-                            
-                            if (isScanning) {
-                                console.log('📸 Processing point cloud (scanning mode)');
-                                processPointCloud(data);
-                            } else {
-                                // Show preview even when not scanning
-                                console.log('👁️ Showing preview (not scanning mode)');
-                                showPreview(data);
-                            }
-                        } else {
-                            console.log('⚠️ Non-point cloud JSON data received:', Object.keys(data));
-                            console.log('Data sample:', JSON.stringify(data).substring(0, 200));
-                            updateDebugInfo('Received non-point cloud data: ' + Object.keys(data).join(', '));
+                // The new server sends the final mesh as a single binary blob.
+                if (event.data instanceof Blob) {
+                    console.log('✅ Received final mesh data (Blob).');
+                    updateScanStatus('processing', 'Mesh received, loading...');
+
+                    const loader = new THREE.PLYLoader();
+                    const url = URL.createObjectURL(event.data);
+
+                    loader.load(url, function (geometry) {
+                        URL.revokeObjectURL(url); // Clean up blob URL
+                        console.log('✅ PLY file loaded and parsed successfully.');
+
+                        // Remove the old mesh if it exists
+                        if (mesh) {
+                            scene.remove(mesh);
+                            if(mesh.geometry) mesh.geometry.dispose();
+                            if(mesh.material) mesh.material.dispose();
                         }
-                    } catch (e) {
-                        console.error('❌ Error parsing point cloud data:', e);
-                        console.error('Raw data preview:', event.data.substring(0, 200));
-                        updateDebugInfo('Error parsing: ' + e.message);
-                    }
-                } else {
-                    console.log('📦 Received non-string data:', typeof event.data, event.data instanceof Blob ? 'Blob' : '');
-                    updateDebugInfo('Received ' + typeof event.data + ' data');
+                        
+                        geometry.computeVertexNormals();
+
+                        // Create a new material for the mesh
+                        const material = new THREE.MeshStandardMaterial({
+                            vertexColors: true, // Use colors from the PLY file if they exist
+                            side: THREE.DoubleSide
+                        });
+                        
+                        // Create the mesh and add it to the scene
+                        mesh = new THREE.Mesh(geometry, material);
+                        mesh.name = "reconstructedMesh";
+                        scene.add(mesh);
+                        
+                        updateScanStatus('ready', 'Mesh loaded');
+                        console.log('✅ New mesh added to the scene.');
+
+                        // Enable export/clear buttons
+                        document.getElementById('exportSTLBtn').disabled = false;
+                        document.getElementById('clearBtn').disabled = false;
+                        document.getElementById('generateMeshBtn').disabled = true; // Mesh is already generated
+
+                    }, undefined, function (error) {
+                        console.error('❌ Error loading PLY data:', error);
+                        alert('Failed to load the 3D mesh.');
+                        updateScanStatus('idle', 'Error loading mesh');
+                    });
                 }
             };
         }
         
         // Show preview of point cloud (not saving)
-        function showPreview(data) {
-            if (!scene) {
-                console.warn('Scene not initialized, cannot show preview');
-                return;
-            }
-            
-            if (!data || !data.points || data.points.length === 0) {
-                console.warn('No points in preview data');
-                updateDebugInfo('⚠️ No points in data');
-                return;
-            }
-            
-            console.log('📊 Preview data analysis:', {
-                totalPoints: data.points.length,
-                sampleZ: data.points.slice(0, 10).map(p => p.z).filter(z => z !== undefined),
-                zRange: {
-                    min: Math.min(...data.points.map(p => Math.abs(p.z || 0)).filter(z => z > 0)),
-                    max: Math.max(...data.points.map(p => Math.abs(p.z || 0)))
-                }
-            });
-            
-            const maxPointsEl = document.getElementById('maxPointsSlider');
-            const maxPoints = maxPointsEl ? parseInt(maxPointsEl.value) || 10000 : 10000;
-            
-            let previewPoints = data.points.slice(0, Math.min(data.points.length, maxPoints));
-            console.log('Preview: Original points:', previewPoints.length);
-            
-            // Apply basic filtering for preview
-            const beforeFilter = previewPoints.length;
-            previewPoints = filterByDistance(previewPoints);
-            console.log('Preview: After distance filter:', previewPoints.length, 'of', beforeFilter);
-            
-            // If all points filtered out, show without distance filter
-            if (previewPoints.length === 0 && data.points.length > 0) {
-                console.warn('⚠️ All points filtered out! Showing first 1000 points without filter');
-                previewPoints = data.points.slice(0, Math.min(1000, data.points.length));
-                updateDebugInfo(`⚠️ All filtered! Showing ${previewPoints.length} raw points`);
-            }
-            
-            // Create temporary preview
-            if (previewPoints.length > 0) {
-                console.log('✅ Displaying preview with', previewPoints.length, 'points');
-                displayPreviewPoints(previewPoints);
-                updateDebugInfo(`✅ Preview: ${previewPoints.length} points (${beforeFilter} total)`);
-            } else {
-                console.error('❌ No points to display in preview');
-                updateDebugInfo('❌ No points after filtering - Check Min/Max Distance!');
-            }
-        }
+        /* function showPreview(points) {
+            // This function is no longer needed as the server handles all fusion and sends the final mesh.
+        } */
         
         // Toggle show all points
         function toggleShowAll() {
@@ -874,55 +837,9 @@
             }
         }
         
-        function processPointCloud(data) {
-            if (!data || !data.points || !Array.isArray(data.points)) {
-                console.warn('Invalid point cloud data:', data);
-                return;
-            }
-            
-            // Add points to collection
-            const maxPoints = parseInt(document.getElementById('maxPointsSlider').value) || 10000;
-            let newPoints = data.points.slice(0, Math.min(data.points.length, maxPoints));
-            
-            if (newPoints.length === 0) {
-                console.warn('No points after slicing');
-                return;
-            }
-            
-            // Apply distance filtering to detect objects
-            newPoints = filterByDistance(newPoints);
-            
-            if (newPoints.length === 0) {
-                console.warn('No points after distance filtering. Adjust Min/Max Distance settings.');
-                return;
-            }
-            
-            // Apply outlier removal only if we have existing points
-            if (pointCloud.length > 0) {
-                const beforeOutlier = newPoints.length;
-                newPoints = removeOutliers(newPoints, pointCloud);
-                if (newPoints.length === 0 && beforeOutlier > 0) {
-                    console.warn('All points removed by outlier filter. Try reducing Outlier Removal threshold.');
-                    // Keep some points anyway
-                    newPoints = data.points.slice(0, Math.min(100, data.points.length));
-                    newPoints = filterByDistance(newPoints);
-                }
-            }
-            
-            if (newPoints.length > 0) {
-                pointCloud.push(...newPoints);
-                
-                // Update filtered point cloud for display
-                filteredPointCloud = filterPointCloud(pointCloud);
-                
-                updatePointCloudDisplay();
-                updateStats();
-                
-                console.log('Processed', newPoints.length, 'new points. Total:', pointCloud.length, 'Filtered:', filteredPointCloud.length);
-            } else {
-                console.warn('No points to add after filtering');
-            }
-        }
+        /* function processPointCloud(points) {
+            // This function is no longer needed as the server handles all fusion and sends the final mesh.
+        } */
         
         // Filter points by distance (object detection)
         // NOTE: Kinect coordinates - Z is distance from sensor (in meters)
@@ -1120,217 +1037,40 @@
             return filtered.length > 0 ? filtered : points;
         }
         
-        function updatePointCloudDisplay() {
-            if (!scene) {
-                console.warn('Scene not initialized');
-                return;
-            }
-            
-            // Remove old point cloud
-            const oldPointCloud = scene.getObjectByName('pointCloud');
-            if (oldPointCloud) {
-                scene.remove(oldPointCloud);
-            }
-            
-            // Remove preview if scanning
-            if (isScanning) {
-                const oldPreview = scene.getObjectByName('preview');
-                if (oldPreview) {
-                    scene.remove(oldPreview);
-                }
-            }
-            
-            // Use filtered point cloud for display
-            const displayPoints = filteredPointCloud.length > 0 ? filteredPointCloud : pointCloud;
-            
-            if (displayPoints.length === 0) {
-                console.log('No points to display');
-                return;
-            }
-            
-            // Create geometry from points
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(displayPoints.length * 3);
-            const colors = new Float32Array(displayPoints.length * 3);
-            
-            // Calculate bounds for camera positioning
-            let minX = Infinity, maxX = -Infinity;
-            let minY = Infinity, maxY = -Infinity;
-            let minZ = Infinity, maxZ = -Infinity;
-            
-            for (let i = 0; i < displayPoints.length; i++) {
-                const point = displayPoints[i];
-                const x = point.x || 0;
-                const y = point.y || 0;
-                const z = point.z || 0;
-                
-                positions[i * 3] = x;
-                positions[i * 3 + 1] = y;
-                positions[i * 3 + 2] = z;
-                
-                colors[i * 3] = (point.r || 128) / 255;
-                colors[i * 3 + 1] = (point.g || 128) / 255;
-                colors[i * 3 + 2] = (point.b || 128) / 255;
-                
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
-                minZ = Math.min(minZ, z);
-                maxZ = Math.max(maxZ, z);
-            }
-            
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            
-            const material = new THREE.PointsMaterial({
-                size: 0.02,
-                vertexColors: true,
-                sizeAttenuation: false
-            });
-            
-            const points = new THREE.Points(geometry, material);
-            points.name = 'pointCloud';
-            scene.add(points);
-            
-            // Auto-adjust camera to view the point cloud
-            if (!isNaN(minX) && !isNaN(maxX) && (maxX - minX) > 0) {
-                const centerX = (minX + maxX) / 2;
-                const centerY = (minY + maxY) / 2;
-                const centerZ = (minZ + maxZ) / 2;
-                const size = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-                
-                if (size > 0) {
-                    camera.position.set(centerX, centerY, centerZ + size * 1.5);
-                    camera.lookAt(centerX, centerY, centerZ);
-                }
-            }
-        }
+        /* function updatePointCloudDisplay() {
+            // This function is no longer needed as the client directly loads the final mesh.
+        } */
         
         function startScan() {
-            if (!connected) {
-                alert('Harus terhubung ke server terlebih dahulu!');
-                return;
-            }
-            
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
+            if (!connected || !socket || socket.readyState !== WebSocket.OPEN) {
                 alert('Koneksi tidak aktif. Silakan hubungkan terlebih dahulu.');
                 return;
             }
             
-            console.log('Starting scan...');
-            isScanning = true;
-            pointCloud = [];
-            filteredPointCloud = [];
-            
-            // Remove preview
-            if (scene) {
-                const oldPreview = scene.getObjectByName('preview');
-                if (oldPreview) {
-                    scene.remove(oldPreview);
-                }
-            }
-            
+            clearScan(); // Clear previous mesh before starting a new scan
+
+            console.log('🎬 Mengirim perintah StartScan ke server...');
+            socket.send("StartScan");
+
+            updateScanStatus('scanning', 'Scanning... Mohon tunggu mesh selesai.');
             document.getElementById('startScanBtn').disabled = true;
-            document.getElementById('startScanBtn').classList.add('scanning');
             document.getElementById('stopScanBtn').disabled = false;
-            document.getElementById('clearBtn').disabled = false;
-            document.getElementById('generateMeshBtn').disabled = true;
-            document.getElementById('exportSTLBtn').disabled = true;
-            document.getElementById('scanStatus').textContent = 'Scanning...';
-            
-            // Ensure PointCloud mode is active
-            try {
-                socket.send("PointCloud");
-                console.log('Sent PointCloud mode command');
-            } catch (e) {
-                console.error('Error sending PointCloud command:', e);
-                alert('Error mengirim command ke server: ' + e.message);
-            }
-            
-            updateStats();
         }
         
-        function stopScan() {
-            console.log('Stopping scan...');
-            isScanning = false;
-            
+        function stopScan() { //This is called by the 'Stop Record' button
+            if (!connected || !socket || socket.readyState !== WebSocket.OPEN) return;
+            console.log('⏹️ Mengirim perintah StopScan ke server...');
+            socket.send("StopScan");
+
+            updateScanStatus('processing', 'Memproses mesh...');
             document.getElementById('startScanBtn').disabled = false;
-            document.getElementById('startScanBtn').classList.remove('scanning');
             document.getElementById('stopScanBtn').disabled = true;
-            
-            // Remove preview
-            if (scene) {
-                const oldPreview = scene.getObjectByName('preview');
-                if (oldPreview) {
-                    scene.remove(oldPreview);
-                }
-            }
-            
-            const totalPoints = pointCloud.length;
-            const filteredPoints = filteredPointCloud.length > 0 ? filteredPointCloud.length : totalPoints;
-            
-            if (filteredPoints > 0) {
-                document.getElementById('scanStatus').textContent = `Selesai (${filteredPoints.toLocaleString()} points)`;
-                document.getElementById('generateMeshBtn').disabled = false;
-            } else {
-                document.getElementById('scanStatus').textContent = 'Selesai (tidak ada data)';
-                document.getElementById('generateMeshBtn').disabled = true;
-            }
-            
-            console.log('Scan stopped. Total points:', totalPoints, 'Filtered:', filteredPoints);
         }
         
-        function generateMesh() {
-            const pointsToUse = filteredPointCloud.length > 0 ? filteredPointCloud : pointCloud;
-            
-            if (pointsToUse.length === 0) {
-                alert('Tidak ada point cloud untuk di-generate mesh!');
-                return;
-            }
-            
-            if (pointsToUse.length < 3) {
-                alert('Tidak cukup points untuk membuat mesh! Minimal 3 points diperlukan.');
-                return;
-            }
-            
-            document.getElementById('generateMeshBtn').disabled = true;
-            document.getElementById('generateMeshBtn').textContent = 'Generating...';
-            
-            // Use setTimeout to allow UI to update
-            setTimeout(() => {
-                try {
-                    mesh = createMeshFromPointCloud(pointsToUse);
-                    
-                    if (!mesh) {
-                        alert('Gagal membuat mesh. Coba ubah parameter Mesh Resolution atau tambah lebih banyak points.');
-                        document.getElementById('generateMeshBtn').disabled = false;
-                        document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
-                        return;
-                    }
-                    
-                    // Remove old mesh
-                    const oldMesh = scene.getObjectByName('mesh');
-                    if (oldMesh) {
-                        scene.remove(oldMesh);
-                    }
-                    
-                    mesh.name = 'mesh';
-                    scene.add(mesh);
-                    
-                    document.getElementById('generateMeshBtn').disabled = false;
-                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
-                    document.getElementById('exportSTLBtn').disabled = false;
-                    
-                    console.log('Mesh generated successfully with', pointsToUse.length, 'points');
-                } catch (error) {
-                    console.error('Error generating mesh:', error);
-                    alert('Error saat membuat mesh: ' + error.message);
-                    document.getElementById('generateMeshBtn').disabled = false;
-                    document.getElementById('generateMeshBtn').textContent = 'Generate Mesh';
-                }
-            }, 100);
-        }
+        /* function generateMesh() {
+            // No longer needed, server sends final mesh.
+            // This button is now hidden.
+        } */
         
         function createMeshFromPointCloud(points) {
             if (points.length < 3) {
@@ -1791,32 +1531,17 @@
         }
         
         function clearScan() {
-            pointCloud = [];
-            filteredPointCloud = [];
-            mesh = null;
-            
-            if (scene) {
-                const oldPointCloud = scene.getObjectByName('pointCloud');
-                if (oldPointCloud) {
-                    scene.remove(oldPointCloud);
-                }
-                
-                const oldPreview = scene.getObjectByName('preview');
-                if (oldPreview) {
-                    scene.remove(oldPreview);
-                }
-                
-                const oldMesh = scene.getObjectByName('mesh');
-                if (oldMesh) {
-                    scene.remove(oldMesh);
-                }
+            if (mesh) {
+                scene.remove(mesh);
+                if(mesh.geometry) mesh.geometry.dispose();
+                if(mesh.material) mesh.material.dispose();
+                mesh = null;
+                console.log('🗑️ Mesh dibersihkan dari scene.');
             }
-            
-            document.getElementById('generateMeshBtn').disabled = true;
+            updateScanStatus('idle', 'Idle');
+            updateMeshInfo(0,0);
             document.getElementById('exportSTLBtn').disabled = true;
-            updateStats();
-            
-            console.log('Scan cleared');
+            document.getElementById('generateMeshBtn').disabled = true;
         }
         
         function updateStats() {

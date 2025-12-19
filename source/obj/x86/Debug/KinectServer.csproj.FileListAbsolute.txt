@@ -17,3 +17,14 @@ C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Fleck.dll
 C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Microsoft.Kinect.dll
 C:\Users\EnumaTech\Downloads\webkinect\source\bin\Debug\Microsoft.Kinect.xml
 C:\Users\EnumaTech\Downloads\webkinect\source\obj\x86\Debug\KinectSe.8307E18F.Up2Date
+D:\WebKinnect\New\webkinect\source\obj\x86\Debug\KinectServer.csproj.AssemblyReference.cache
+D:\WebKinnect\New\webkinect\source\obj\x86\Debug\KinectServer.csproj.CoreCompileInputs.cache
+D:\WebKinnect\New\webkinect\source\obj\x86\Debug\server.exe
+D:\WebKinnect\New\webkinect\source\obj\x86\Debug\server.pdb
+D:\WebKinnect\New\webkinect\source\bin\Debug\server.exe.config
+D:\WebKinnect\New\webkinect\source\bin\Debug\server.exe
+D:\WebKinnect\New\webkinect\source\bin\Debug\server.pdb
+D:\WebKinnect\New\webkinect\source\bin\Debug\Fleck.dll
+D:\WebKinnect\New\webkinect\source\bin\Debug\Microsoft.Kinect.dll
+D:\WebKinnect\New\webkinect\source\bin\Debug\Microsoft.Kinect.xml
+D:\WebKinnect\New\webkinect\source\obj\x86\Debug\KinectSe.8307E18F.Up2Date
