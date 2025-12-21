@@ -553,7 +553,7 @@
 
         .scanning-container {
             display: grid;
-            grid-template-columns: 280px 1fr 320px;
+            grid-template-columns: 280px 0.8fr 1fr;
             grid-template-rows: 1fr;
             min-height: 0;
             height: 100%;
@@ -1218,7 +1218,7 @@
                             </div>
                             <button class="control-button delete" onclick="clearScan()" id="clearBtn" disabled>
                                 <span style="display: flex; align-items: center; gap: 8px;">
-                                    Delete
+                                    🗑️ Delete
                                 </span>
                             </button>
                         </div>
@@ -1237,11 +1237,11 @@
                                 <label style="color: #95a5a6; font-size: 10px; text-transform: uppercase; display: block; margin-bottom: 5px;">Status</label>
                                 <div class="scan-status idle" id="scanStatus" style="font-size: 11px; padding: 6px 10px;">Idle</div>
                             </div>
-                            <button id="stopScanBtn" class="control-button" onclick="stopCapture()" disabled>Stop Record</button>
-                            <button id="startPhase2Btn" class="control-button" onclick="startPhase2()" disabled style="display: none;">Phase 2 (Back)</button>
-                            <button id="removeBgBtn" class="control-button" onclick="removeBackground()" disabled>Remove Background</button>
-                            <button id="generateMeshBtn" class="control-button" onclick="generateMesh()" disabled>Generate Mesh</button>
-                            <button id="exportSTLBtn" class="control-button" onclick="exportSTL()" disabled>Export STL</button>
+                            <button id="stopScanBtn" class="control-button" onclick="stopCapture()" disabled>⏹️ Stop Record</button>
+                            <button id="startPhase2Btn" class="control-button" onclick="startPhase2()" disabled style="display: none;">🔄 Phase 2 (Back)</button>
+                            <button id="removeBgBtn" class="control-button" onclick="removeBackground()" disabled>🎨 Remove BG</button>
+                            <button id="generateMeshBtn" class="control-button" onclick="generateMesh()" disabled>🔷 Generate Mesh</button>
+                            <button id="exportSTLBtn" class="control-button" onclick="exportSTL()" disabled>💾 Export STL</button>
                         </div>
 
                         <!-- Scan Info -->
@@ -1305,7 +1305,7 @@
                             <div style="margin-top: 15px; padding: 15px; background: #000000; border-radius: 5px; border: 2px solid #000000;">
                                 <label style="display: flex; align-items: center; gap: 8px; font-weight: bold; color: #ecf0f1; font-size: 12px;">
                                     <input type="checkbox" id="enableMultiPhaseCheckbox" style="width: auto;" onchange="toggleMultiPhaseMode()">
-                                    Two-Phase Scan (Front & Back)
+                                    🔄 Scan Dua Fase (Depan & Belakang)
                                 </label>
                                 <p style="margin: 8px 0 0 0; font-size: 0.9em; color: #95a5a6;">
                                     Fase 1: Scan depan (15 detik)<br>
@@ -1329,17 +1329,17 @@
                                 </label>
                                 <input type="range" id="objectScaleSlider" min="0.1" max="3.0" value="1.0" step="0.05" oninput="updateObjectScale(this.value)">
                                 <div style="display: flex; gap: 5px; margin-top: 5px;">
-                                    <button onclick="adjustScale(-0.1)" style="flex: 1; padding: 8px; background: #000000; color: #ecf0f1; border: 1px solid #000000; border-radius: 4px; cursor: pointer; font-weight: 600;">Smaller</button>
-                                    <button onclick="resetScale()" style="flex: 1; padding: 8px; background: #000000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Reset</button>
-                                    <button onclick="adjustScale(0.1)" style="flex: 1; padding: 8px; background: #000000; color: #ecf0f1; border: 1px solid #000000; border-radius: 4px; cursor: pointer; font-weight: 600;">Bigger</button>
+                                    <button onclick="adjustScale(-0.1)" style="flex: 1; padding: 8px; background: #000000; color: #ecf0f1; border: 1px solid #000000; border-radius: 4px; cursor: pointer; font-weight: 600;">➖ Smaller</button>
+                                    <button onclick="resetScale()" style="flex: 1; padding: 8px; background: #000000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">↺ Reset</button>
+                                    <button onclick="adjustScale(0.1)" style="flex: 1; padding: 8px; background: #000000; color: #ecf0f1; border: 1px solid #000000; border-radius: 4px; cursor: pointer; font-weight: 600;">➕ Bigger</button>
                                 </div>
                             </div>
                             <div class="info-item" style="background: #1e2a3a; color: #ecf0f1; margin-top: 10px;">
-                                <label style="color: #95a5a6; font-size: 11px;">TIP</label>
+                                <label style="color: #95a5a6; font-size: 11px;">💡 TIP</label>
                                 <div style="font-size: 11px; color: #95a5a6;">
                                     Adjust object size (0.1x - 3.0x)<br>
-                                    Applied to STL export<br>
-                                    Real size change, not just visual
+                                    ✅ Applied to STL export<br>
+                                    ✅ Real size change, not just visual
                                 </div>
                             </div>
                         </div>
@@ -1381,7 +1381,7 @@
                                 </div>
                             </div>
                             <button onclick="resetObjectPosition()" style="width: 100%; padding: 10px; margin-top: 10px; background: #000000; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                                Reset to Center
+                                🔄 Reset to Center
                             </button>
                             <div style="margin-top: 10px; padding: 10px; background: #000000; border-radius: 5px;">
                                 <label style="font-size: 0.9em; color: #95a5a6;">Current Position:</label>
@@ -1413,8 +1413,8 @@
                         <div class="viewer-overlay">
                             <div class="title">3D Mesh Viewer</div>
                             <div style="font-size: 11px; line-height: 1.6; color: #95a5a6;">
-                                Drag to rotate<br>
-                                Scroll to zoom<br>
+                                🖱️ Drag to rotate<br>
+                                📜 Scroll to zoom<br>
                                 <span id="meshInfo" style="color: #ecf0f1;">No mesh loaded</span>
                             </div>
                         </div>
@@ -1422,44 +1422,34 @@
 
                     <!-- Right Panel: Preview Panels (Skanect Style) -->
                     <div class="preview-panel">
-                        <div class="preview-panel-top">
-                            <!-- Depth Camera Preview -->
-                            <div class="preview-box">
-                                <div class="preview-box-header">Depth Camera</div>
-                                <div class="depth-viewer">
-                                    <canvas id="depthCanvas" width="320" height="240"></canvas>
-                                    <div class="depth-legend">
-                                        <div class="legend-item">
-                                            <div class="legend-color" style="background: #00ff00;"></div>
-                                            <span>Valid</span>
-                                        </div>
-                                        <div class="legend-item">
-                                            <div class="legend-color" style="background: #ff0000;"></div>
-                                            <span>Invalid</span>
-                                        </div>
+                        <!-- Depth Camera Preview (Expanded) -->
+                        <div class="preview-box" style="flex: 1; margin-bottom: 15px;">
+                            <div class="preview-box-header">📷 Depth Camera</div>
+                            <div class="depth-viewer">
+                                <canvas id="depthCanvas" width="320" height="240"></canvas>
+                                <div class="depth-legend">
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #00ff00;"></div>
+                                        <span>Valid (0.5-4m)</span>
                                     </div>
-                                    <div class="depth-stats">
-                                        <div>FPS: <span id="depthFps">0</span></div>
-                                        <div>Points: <span id="depthPoints">0</span></div>
+                                    <div class="legend-item">
+                                        <div class="legend-color" style="background: #ff0000;"></div>
+                                        <span>Invalid</span>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- Color Camera Preview -->
-                            <div class="preview-box">
-                                <div class="preview-box-header">Color Camera</div>
-                                <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000000; border-radius: 6px; overflow: hidden;">
-                                    <img id="colorPreviewImage" style="max-width: 100%; max-height: 100%; display: none;" alt="Color Preview">
-                                    <div style="color: #95a5a6; font-size: 11px;" id="colorPreviewPlaceholder">No feed</div>
+                                <div class="depth-stats">
+                                    <div>FPS: <span id="depthFps">0</span></div>
+                                    <div>Points: <span id="depthPoints">0</span></div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Large Preview Panel -->
-                        <div class="preview-box-large">
-                            <div class="preview-box-header">3D Preview</div>
-                            <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000000; border-radius: 6px; color: #95a5a6; font-size: 12px;">
-                                <div id="preview3DPlaceholder">Mesh preview will appear here</div>
+                        <!-- Color Camera Preview (Live Feed) -->
+                        <div class="preview-box" style="flex: 1;">
+                            <div class="preview-box-header">📹 Color Camera</div>
+                            <div style="flex: 1; display: flex; align-items: center; justify-content: center; background: #000000; border-radius: 6px; overflow: hidden; position: relative;">
+                                <img id="colorImageScanning" style="max-width: 100%; max-height: 100%; display: none;" alt="Color Camera">
+                                <div style="color: #95a5a6; font-size: 11px;" id="colorPlaceholderScanning">Menunggu data color...</div>
                             </div>
                         </div>
                     </div>
@@ -2038,80 +2028,54 @@
         
         function initViewer() {
             const container = document.getElementById('viewer');
-            if (!container) return;
-            
+            if (!container) {
+                console.warn('⚠️ Viewer container not found');
+                return;
+            }
+
+            // Ensure container has proper size before initialization
+            const width = container.clientWidth || 800;
+            const height = container.clientHeight || 600;
+            console.log('🔵 Initializing viewer with size:', width, 'x', height);
+
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a1a);
-            
-            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
             camera.position.set(0, 0, 3);
-            
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setSize(width, height);
             container.appendChild(renderer.domElement);
             
-            // Add lights (increased intensity for better visibility)
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
-            
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
             directionalLight.position.set(5, 5, 5);
             scene.add(directionalLight);
-            
-            // Add additional light from opposite side for better illumination
-            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
-            directionalLight2.position.set(-5, 3, -5);
-            scene.add(directionalLight2);
-            
+
             // Ukuran kanvas 3js: 400mm x 400mm (0.4m x 0.4m)
             const canvasSize = 0.4; // 400mm = 0.4m
             const maxObjectSize = 0.35; // 350mm = 0.35m (maksimal ukuran objek)
-            
+
             // Add grid sesuai ukuran kanvas
             // Grid diposisikan di Y = 0 (di atas ground plane)
             const gridHelper = new THREE.GridHelper(canvasSize, 8); // Grid 400mm dengan 8 divisi
             gridHelper.position.y = 0; // Pastikan grid berada di Y = 0
             scene.add(gridHelper);
-            
+
             // Add axes
             const axesHelper = new THREE.AxesHelper(0.5); // Axes standar
             scene.add(axesHelper);
-            
-            // Add cube in the center
-            const cubeSize = 0.2; // 20cm x 20cm x 20cm cube (larger for better visibility)
-            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-            const cubeMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0xffffff, // White color
-                metalness: 0.1,
-                roughness: 0.9
-            });
-            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-            cube.position.set(0, cubeSize / 2, 0); // Position at center, with bottom on grid
-            scene.add(cube);
-            
-            // Add wireframe edges for better visibility
-            const edges = new THREE.EdgesGeometry(cubeGeometry);
-            const line = new THREE.LineSegments(
-                edges,
-                new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
-            );
-            line.position.copy(cube.position);
-            scene.add(line);
-            
-            // Store cube reference globally for potential rotation animation
-            window.centerCube = cube;
-            window.centerCubeWireframe = line;
-            
-            // Ensure camera looks at the cube
-            camera.lookAt(0, 0, 0);
-            
+
             // Hanya grid layout saja, tanpa kotak wireframe
             console.log('✅ Grid layout created:', {
                 canvasSize: canvasSize + 'm x ' + canvasSize + 'm (400mm x 400mm)',
                 maxObjectSize: maxObjectSize + 'm (350mm)',
                 divisions: 8
             });
-            console.log('✅ White cube added at center:', cube.position, 'Size:', cubeSize);
             
             // Store canvas size globally untuk validasi objek
             window.canvasSize = canvasSize;
@@ -2145,26 +2109,34 @@
                 const delta = e.deltaY * 0.001;
                 camera.position.multiplyScalar(1 + delta);
             });
-            
+
             animate();
+
+            console.log('✅ 3D Viewer fully initialized:', {
+                renderer: renderer ? 'OK' : 'FAILED',
+                scene: scene ? 'OK' : 'FAILED',
+                camera: camera ? 'OK' : 'FAILED',
+                gridAdded: scene.children.length,
+                canvasSize: width + 'x' + height
+            });
         }
         
         function animate() {
             if (renderer && scene && camera) {
                 requestAnimationFrame(animate);
-                
+
                 // Rotate center cube if it exists
                 if (window.centerCube) {
                     window.centerCube.rotation.x += 0.01;
                     window.centerCube.rotation.y += 0.01;
                 }
-                
+
                 // Rotate wireframe with cube
                 if (window.centerCubeWireframe) {
                     window.centerCubeWireframe.rotation.x += 0.01;
                     window.centerCubeWireframe.rotation.y += 0.01;
                 }
-                
+
                 renderer.render(scene, camera);
             }
         }
@@ -2322,7 +2294,7 @@
             // Update workflow step highlighting
             const steps = document.querySelectorAll('.workflow-step');
             steps.forEach(s => s.classList.remove('active'));
-            
+
             const stepMap = {
                 'prepare': 0,
                 'record': 1,
@@ -2330,19 +2302,45 @@
                 'process': 3,
                 'share': 4
             };
-            
+
             if (stepMap[step] !== undefined) {
                 steps[stepMap[step]].classList.add('active');
             }
-            
+
             // Hide all workflow content sections
             const contents = document.querySelectorAll('.workflow-content');
             contents.forEach(c => c.classList.remove('active'));
-            
+
             // Show selected workflow content
             const selectedContent = document.getElementById(step + 'Content');
             if (selectedContent) {
                 selectedContent.classList.add('active');
+            }
+
+            // Initialize viewer when switching to record step
+            if (step === 'record') {
+                if (!viewerInitialized) {
+                    console.log('🔵 Initializing 3D viewer for Record step...');
+                    setTimeout(() => {
+                        initDepthCanvas();
+                        initViewer();
+                        viewerInitialized = true;
+                    }, 100); // Small delay to ensure DOM is ready
+                } else {
+                    // Resize renderer if already initialized to fix display issues
+                    console.log('🔵 Resizing 3D viewer for Record step...');
+                    setTimeout(() => {
+                        const container = document.getElementById('viewer');
+                        if (container && renderer && camera) {
+                            const width = container.clientWidth;
+                            const height = container.clientHeight;
+                            renderer.setSize(width, height);
+                            camera.aspect = width / height;
+                            camera.updateProjectionMatrix();
+                            console.log('✅ Viewer resized to:', width, 'x', height);
+                        }
+                    }, 150); // Slightly longer delay to ensure container has proper size
+                }
             }
         }
 
@@ -7286,6 +7284,15 @@
         // Auto-connect on page load
         window.addEventListener('load', function() {
             console.log('🔵 Page loaded, auto-connecting...');
+
+            // Initialize viewer and depth canvas if starting in scanning mode
+            if (currentMode === 'scanning' && !viewerInitialized) {
+                console.log('🔵 Initializing 3D viewer on page load...');
+                initDepthCanvas();
+                initViewer();
+                viewerInitialized = true;
+            }
+
             connect();
         });
 
