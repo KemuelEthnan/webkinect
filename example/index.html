@@ -452,6 +452,45 @@
             border-left: 3px solid #4a9eff;
         }
 
+        /* Bounding Box Slider Styling (Skanect Style) */
+        input[type="range"]#boxSizeSlider {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #1a1a1a;
+            outline: none;
+            border: 1px solid #333;
+            border-radius: 4px;
+            height: 6px;
+        }
+
+        input[type="range"]#boxSizeSlider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4a9eff;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #2a2a2a;
+        }
+
+        input[type="range"]#boxSizeSlider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4a9eff;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #2a2a2a;
+        }
+
+        input[type="range"]#boxSizeSlider::-webkit-slider-thumb:hover {
+            background: #3a8eef;
+        }
+
+        input[type="range"]#boxSizeSlider::-moz-range-thumb:hover {
+            background: #3a8eef;
+        }
+
         .prepare-start-button {
             width: 100%;
             padding: 15px;
@@ -1136,23 +1175,36 @@
                                     <label>Bounding box</label>
                                     <div class="prepare-input-group">
                                         <span class="prepare-input-indicator"></span>
-                                        <input type="text" value="1 x 1 x 1 meters" readonly>
+                                        <input type="text" id="boundingBoxDisplay" value="1 x 1 x 1 meters" readonly>
+                                    </div>
+                                    <input type="range" id="boxSizeSlider" min="0.1" max="12" step="0.1" value="1"
+                                           style="width: 100%; margin-top: 10px; cursor: pointer;"
+                                           oninput="updateBoundingBoxSize(this.value)">
+                                    <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: #95a5a6;">
+                                        <span>0.1m</span>
+                                        <span id="currentBoxSize">1.0m</span>
+                                        <span>12m</span>
                                     </div>
                                 </div>
                                 
                                 <div class="prepare-form-group">
                                     <label>Aspect ratio</label>
                                     <div class="prepare-button-group">
-                                        <button class="prepare-btn active" onclick="setAspectRatio('normal')">Normal</button>
-                                        <button class="prepare-btn" onclick="setAspectRatio('heightx2')">Height x 2</button>
+                                        <button class="prepare-btn active" id="aspectNormal" onclick="setAspectRatio('normal')">Normal</button>
+                                        <button class="prepare-btn" id="aspectHeightX2" onclick="setAspectRatio('heightx2')">Height x 2</button>
+                                        <button class="prepare-btn" id="aspectHeightX3" onclick="setAspectRatio('heightx3')">Height x 3</button>
+                                        <button class="prepare-btn" id="aspectWidthX2" onclick="setAspectRatio('widthx2')">Width x 2</button>
                                     </div>
                                 </div>
                                 
                                 <div class="prepare-form-group">
                                     <label>Path</label>
                                     <div class="prepare-input-group">
-                                        <input type="text" value="...ts/Scans/2025-12-19_16_47_17.skn" readonly>
+                                        <input type="text" id="savePath" value="...ts/Scans/2025-12-19_16_47_17.skn" readonly style="cursor: pointer;" onclick="selectSavePath()" title="Click to change save path">
                                     </div>
+                                    <button class="prepare-btn" onclick="selectSavePath()" style="margin-top: 10px;">
+                                        📁 Browse...
+                                    </button>
                                 </div>
                                 
                                 <div class="prepare-form-group">
@@ -2042,7 +2094,7 @@
             scene.background = new THREE.Color(0x1a1a1a);
 
             camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-            camera.position.set(0, 0, 3);
+            camera.position.set(0, 8, 15); // Posisi kamera lebih jauh untuk melihat kanvas 10m x 10m
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(width, height);
@@ -2056,27 +2108,28 @@
             directionalLight.position.set(5, 5, 5);
             scene.add(directionalLight);
 
-            // Ukuran kanvas 3js: 400mm x 400mm (0.4m x 0.4m)
-            const canvasSize = 0.4; // 400mm = 0.4m
-            const maxObjectSize = 0.35; // 350mm = 0.35m (maksimal ukuran objek)
+            // Ukuran kanvas 3js: 10m x 10m
+            const canvasSize = 10; // 10 meters
+            const maxObjectSize = 9.5; // 9.5m (maksimal ukuran objek)
 
             // Add grid sesuai ukuran kanvas
             // Grid diposisikan di Y = 0 (di atas ground plane)
-            const gridHelper = new THREE.GridHelper(canvasSize, 8); // Grid 400mm dengan 8 divisi
+            const gridHelper = new THREE.GridHelper(canvasSize, 50); // Grid 10m dengan 50 divisi (kotak 0.2m x 0.2m)
             gridHelper.position.y = 0; // Pastikan grid berada di Y = 0
             scene.add(gridHelper);
 
-            // Add axes
-            const axesHelper = new THREE.AxesHelper(0.5); // Axes standar
+            // Add axes (diperbesar juga untuk kanvas yang lebih besar)
+            const axesHelper = new THREE.AxesHelper(5); // Axes 5m untuk kanvas 10m
             scene.add(axesHelper);
 
             // Hanya grid layout saja, tanpa kotak wireframe
             console.log('✅ Grid layout created:', {
-                canvasSize: canvasSize + 'm x ' + canvasSize + 'm (400mm x 400mm)',
-                maxObjectSize: maxObjectSize + 'm (350mm)',
-                divisions: 8
+                canvasSize: canvasSize + 'm x ' + canvasSize + 'm (10000mm x 10000mm)',
+                maxObjectSize: maxObjectSize + 'm (9500mm)',
+                divisions: 50,
+                gridSquareSize: (canvasSize / 50) + 'm x ' + (canvasSize / 50) + 'm'
             });
-            
+
             // Store canvas size globally untuk validasi objek
             window.canvasSize = canvasSize;
             window.maxObjectSize = maxObjectSize;
@@ -2139,6 +2192,81 @@
 
                 renderer.render(scene, camera);
             }
+        }
+
+        // Create bounding box in Record page based on config from Prepare page
+        function createBoundingBoxInRecord() {
+            if (!scene) {
+                console.warn('⚠️ Scene not initialized yet');
+                return;
+            }
+
+            // Load config from localStorage
+            const savedConfig = localStorage.getItem('boundingBoxConfig');
+            if (savedConfig) {
+                boundingBoxConfig = JSON.parse(savedConfig);
+            }
+
+            // Remove existing bounding box if any
+            const oldBox = scene.getObjectByName('scanBoundingBox');
+            if (oldBox) {
+                scene.remove(oldBox);
+            }
+
+            // Calculate box dimensions based on config
+            const baseSize = boundingBoxConfig.baseSize;
+            const ratio = boundingBoxConfig.aspectRatio;
+            let width = baseSize;
+            let height = baseSize;
+            let depth = baseSize;
+
+            // Apply aspect ratio
+            if (ratio === 'heightx2') {
+                height = baseSize * 2;
+            } else if (ratio === 'heightx3') {
+                height = baseSize * 3;
+            } else if (ratio === 'widthx2') {
+                width = baseSize * 2;
+                depth = baseSize * 2;
+            }
+
+            // Create wireframe box geometry (Skanect style)
+            const boxGeometry = new THREE.BoxGeometry(width, height, depth);
+            const edges = new THREE.EdgesGeometry(boxGeometry);
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: 0x4a9eff,
+                linewidth: 2,
+                transparent: true,
+                opacity: 0.8
+            });
+            const boundingBox = new THREE.LineSegments(edges, lineMaterial);
+
+            // Position box above grid (centered)
+            boundingBox.position.y = height / 2;
+            boundingBox.name = 'scanBoundingBox';
+
+            scene.add(boundingBox);
+
+            console.log('✅ Bounding box created in Record:', {
+                width: width + 'm',
+                height: height + 'm',
+                depth: depth + 'm',
+                aspectRatio: ratio,
+                scene: boundingBoxConfig.scene
+            });
+
+            // Adjust camera to fit the bounding box
+            const maxDimension = Math.max(width, height, depth);
+            const distance = maxDimension * 2.5;
+            camera.position.set(distance * 0.7, distance * 0.5, distance * 0.7);
+            camera.lookAt(0, height / 2, 0);
+            camera.updateProjectionMatrix();
+        }
+
+        // Update bounding box dynamically if config changes
+        function updateBoundingBoxInRecord() {
+            if (!scene) return;
+            createBoundingBoxInRecord();
         }
 
         // ==================== DEPTH VISUALIZATION (SKANECT STYLE) ====================
@@ -2393,27 +2521,247 @@
                     btn.classList.remove('active');
                 }
             });
+
+            // Save scene to config
+            boundingBoxConfig.scene = scene;
+            localStorage.setItem('boundingBoxConfig', JSON.stringify(boundingBoxConfig));
         }
 
+        // Global variables for bounding box configuration
+        var boundingBoxConfig = {
+            baseSize: 1.0,
+            aspectRatio: 'normal',
+            scene: 'body'
+        };
+
         function setAspectRatio(ratio) {
-            const buttons = document.querySelectorAll('#prepareNew .prepare-btn');
-            buttons.forEach(btn => {
-                const text = btn.textContent.toLowerCase();
-                if ((ratio === 'normal' && text.includes('normal')) || 
-                    (ratio === 'heightx2' && text.includes('height'))) {
-                    btn.classList.add('active');
-                } else if (text.includes('normal') || text.includes('height')) {
-                    btn.classList.remove('active');
-                }
+            // Update aspect ratio buttons
+            const aspectButtons = ['aspectNormal', 'aspectHeightX2', 'aspectHeightX3', 'aspectWidthX2'];
+            aspectButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.remove('active');
             });
+
+            // Set active aspect ratio button
+            if (ratio === 'normal') document.getElementById('aspectNormal')?.classList.add('active');
+            else if (ratio === 'heightx2') document.getElementById('aspectHeightX2')?.classList.add('active');
+            else if (ratio === 'heightx3') document.getElementById('aspectHeightX3')?.classList.add('active');
+            else if (ratio === 'widthx2') document.getElementById('aspectWidthX2')?.classList.add('active');
+
+            // Save aspect ratio to config
+            boundingBoxConfig.aspectRatio = ratio;
+
+            // Update bounding box display
+            updateBoundingBoxDisplay();
+        }
+
+        function updateBoundingBoxSize(size) {
+            boundingBoxConfig.baseSize = parseFloat(size);
+            document.getElementById('currentBoxSize').textContent = size + 'm';
+            updateBoundingBoxDisplay();
+        }
+
+        function updateBoundingBoxDisplay() {
+            const baseSize = boundingBoxConfig.baseSize;
+            const ratio = boundingBoxConfig.aspectRatio;
+            let width = baseSize;
+            let height = baseSize;
+            let depth = baseSize;
+
+            // Apply aspect ratio
+            if (ratio === 'heightx2') {
+                height = baseSize * 2;
+            } else if (ratio === 'heightx3') {
+                height = baseSize * 3;
+            } else if (ratio === 'widthx2') {
+                width = baseSize * 2;
+                depth = baseSize * 2;
+            }
+
+            const displayText = `${width.toFixed(1)} x ${height.toFixed(1)} x ${depth.toFixed(1)} meters`;
+            const displayEl = document.getElementById('boundingBoxDisplay');
+            if (displayEl) displayEl.value = displayText;
+
+            // Save to localStorage
+            localStorage.setItem('boundingBoxConfig', JSON.stringify(boundingBoxConfig));
+        }
+
+        function loadBoundingBoxConfig() {
+            // Load config from localStorage
+            const savedConfig = localStorage.getItem('boundingBoxConfig');
+            if (savedConfig) {
+                try {
+                    boundingBoxConfig = JSON.parse(savedConfig);
+                    console.log('✅ Loaded bounding box config:', boundingBoxConfig);
+                } catch (e) {
+                    console.warn('⚠️ Failed to load bounding box config:', e);
+                }
+            }
+
+            // Update UI elements with loaded config
+            const slider = document.getElementById('boxSizeSlider');
+            if (slider) slider.value = boundingBoxConfig.baseSize;
+
+            const currentSizeEl = document.getElementById('currentBoxSize');
+            if (currentSizeEl) currentSizeEl.textContent = boundingBoxConfig.baseSize.toFixed(1) + 'm';
+
+            // Update aspect ratio buttons
+            const aspectButtons = ['aspectNormal', 'aspectHeightX2', 'aspectHeightX3', 'aspectWidthX2'];
+            aspectButtons.forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.remove('active');
+            });
+
+            if (boundingBoxConfig.aspectRatio === 'normal') {
+                document.getElementById('aspectNormal')?.classList.add('active');
+            } else if (boundingBoxConfig.aspectRatio === 'heightx2') {
+                document.getElementById('aspectHeightX2')?.classList.add('active');
+            } else if (boundingBoxConfig.aspectRatio === 'heightx3') {
+                document.getElementById('aspectHeightX3')?.classList.add('active');
+            } else if (boundingBoxConfig.aspectRatio === 'widthx2') {
+                document.getElementById('aspectWidthX2')?.classList.add('active');
+            }
+
+            // Update display
+            updateBoundingBoxDisplay();
         }
 
         function selectConfigFile() {
             alert('Config file selection - to be implemented');
         }
 
+        // Global variable to store selected save path
+        var selectedSavePath = '';
+        var selectedDirectoryHandle = null;
+
+        async function selectSavePath() {
+            try {
+                // Check if browser supports File System Access API
+                if ('showDirectoryPicker' in window) {
+                    // Modern approach - File System Access API
+                    const dirHandle = await window.showDirectoryPicker({
+                        mode: 'readwrite',
+                        startIn: 'documents'
+                    });
+
+                    selectedDirectoryHandle = dirHandle;
+                    selectedSavePath = dirHandle.name;
+
+                    // Generate filename with timestamp
+                    const now = new Date();
+                    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                    const filename = `scan_${timestamp}.skn`;
+                    const fullPath = `${selectedSavePath}/${filename}`;
+
+                    // Update UI
+                    document.getElementById('savePath').value = fullPath;
+
+                    // Save to localStorage
+                    localStorage.setItem('savePath', fullPath);
+                    localStorage.setItem('saveDirectoryName', selectedSavePath);
+
+                    console.log('✅ Save path selected:', fullPath);
+                    console.log('📁 Directory handle:', dirHandle);
+
+                } else {
+                    // Fallback for browsers that don't support File System Access API
+                    console.warn('⚠️ File System Access API not supported in this browser');
+
+                    // Show a prompt to enter path manually
+                    const userPath = prompt('Enter save path (or folder name):', 'Scans');
+                    if (userPath) {
+                        const now = new Date();
+                        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                        const filename = `scan_${timestamp}.skn`;
+                        const fullPath = `${userPath}/${filename}`;
+
+                        selectedSavePath = userPath;
+                        document.getElementById('savePath').value = fullPath;
+                        localStorage.setItem('savePath', fullPath);
+                        localStorage.setItem('saveDirectoryName', selectedSavePath);
+
+                        console.log('✅ Save path set manually:', fullPath);
+                    }
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('❌ Error selecting save path:', error);
+                    alert('Failed to select save path: ' + error.message);
+                } else {
+                    console.log('ℹ️ User cancelled directory selection');
+                }
+            }
+        }
+
+        // Function to save file to selected directory
+        async function saveFileToDirectory(filename, content) {
+            try {
+                if (selectedDirectoryHandle) {
+                    // Create file in selected directory
+                    const fileHandle = await selectedDirectoryHandle.getFileHandle(filename, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(content);
+                    await writable.close();
+
+                    console.log('✅ File saved successfully:', filename);
+                    return true;
+                } else {
+                    console.warn('⚠️ No directory selected. File will be downloaded instead.');
+                    // Fallback to download
+                    downloadFile(filename, content);
+                    return true;
+                }
+            } catch (error) {
+                console.error('❌ Error saving file:', error);
+                // Fallback to download
+                downloadFile(filename, content);
+                return false;
+            }
+        }
+
+        // Fallback download function
+        function downloadFile(filename, content) {
+            const blob = new Blob([content], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            console.log('✅ File downloaded:', filename);
+        }
+
+        // Load save path from localStorage
+        function loadSavePath() {
+            const savedPath = localStorage.getItem('savePath');
+            const savedDirectoryName = localStorage.getItem('saveDirectoryName');
+
+            if (savedPath) {
+                document.getElementById('savePath').value = savedPath;
+                selectedSavePath = savedDirectoryName || '';
+                console.log('✅ Loaded save path from localStorage:', savedPath);
+            } else {
+                // Set default path
+                const now = new Date();
+                const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                const defaultPath = `Scans/scan_${timestamp}.skn`;
+                document.getElementById('savePath').value = defaultPath;
+            }
+        }
+
         function startNewScan() {
+            // Save current config before switching to record
+            localStorage.setItem('boundingBoxConfig', JSON.stringify(boundingBoxConfig));
+
+            // Switch to record page
             switchWorkflowStep('record');
+
+            // Create bounding box in record page after a short delay to ensure viewer is initialized
+            setTimeout(() => {
+                createBoundingBoxInRecord();
+            }, 500);
         }
 
         function loadScan() {
@@ -7219,6 +7567,12 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize workflow - show Prepare step by default
             switchWorkflowStep('prepare');
+
+            // Load bounding box configuration from localStorage
+            loadBoundingBoxConfig();
+
+            // Load save path from localStorage
+            loadSavePath();
             const maxPointsSlider = document.getElementById('maxPointsSlider');
             const meshResolutionSlider = document.getElementById('meshResolutionSlider');
             
